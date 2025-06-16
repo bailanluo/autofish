@@ -1,0 +1,184 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# AutoFish v2.3 项目结构说明
+
+## 项目概述
+智能化钓鱼辅助工具v2.3，采用模块化架构重构，集成训练数据采集、AI模型训练、自动化钓鱼脚本三大核心功能模块。
+
+## 主程序入口
+- **主程序**: [main.py](mdc:main.py) - 图形化主界面，提供模块选择和启动功能
+
+## v2.3 架构特性
+
+### 🎯 数据采集模块 (modules/data_collector/) - **MVC架构**
+- **主入口**: [modules/data_collector/main.py](mdc:modules/data_collector/main.py) - 模块启动入口
+- **UI管理器**: [modules/data_collector/ui_manager.py](mdc:modules/data_collector/ui_manager.py) - UI界面管理和显示
+- **业务逻辑**: [modules/data_collector/business_logic.py](mdc:modules/data_collector/business_logic.py) - 数据采集和处理逻辑
+- **数据管理**: [modules/data_collector/data_manager.py](mdc:modules/data_collector/data_manager.py) - 数据存储和管理
+- **屏幕捕获**: [modules/data_collector/screen_capture.py](mdc:modules/data_collector/screen_capture.py) - 截图功能实现
+- **热键监听**: [modules/data_collector/hotkey_listener.py](mdc:modules/data_collector/hotkey_listener.py) - 全局热键监听
+- **配置管理**: [modules/data_collector/config_manager.py](mdc:modules/data_collector/config_manager.py) - 模块配置管理
+- **管理员工具**: [modules/data_collector/admin_utils.py](mdc:modules/data_collector/admin_utils.py) - 管理员权限处理
+- **系统设置**: [modules/data_collector/system_settings_dialog.py](mdc:modules/data_collector/system_settings_dialog.py) - 系统设置界面
+- **热键配置**: [modules/data_collector/hotkey_config_dialog.py](mdc:modules/data_collector/hotkey_config_dialog.py) - 热键配置界面
+
+### 🧠 模型训练模块 (modules/model_trainer/) - **完整训练流程**
+- **主入口**: [modules/model_trainer/main.py](mdc:modules/model_trainer/main.py) - 模块启动入口
+- **训练流程**: [modules/model_trainer/training_pipeline.py](mdc:modules/model_trainer/training_pipeline.py) - 端到端训练流程
+- **训练界面**: [modules/model_trainer/training_ui.py](mdc:modules/model_trainer/training_ui.py) - 图形化训练界面
+- **YOLO训练器**: [modules/model_trainer/yolo_trainer.py](mdc:modules/model_trainer/yolo_trainer.py) - YOLO模型训练核心
+- **数据处理器**: [modules/model_trainer/data_processor.py](mdc:modules/model_trainer/data_processor.py) - 动态数据处理
+- **配置管理**: [modules/model_trainer/config_manager.py](mdc:modules/model_trainer/config_manager.py) - 训练配置管理
+- **桌面测试**: [modules/model_trainer/desktop_tester.py](mdc:modules/model_trainer/desktop_tester.py) - 模型测试工具
+- **模型验证**: [modules/model_trainer/model_validator.py](mdc:modules/model_trainer/model_validator.py) - 模型验证工具
+- **训练监控**: [modules/model_trainer/training_monitor.py](mdc:modules/model_trainer/training_monitor.py) - 训练进度监控
+
+### 🎣 自动钓鱼模块
+- **自动钓鱼**: [modules/auto_fisher.py](mdc:modules/auto_fisher.py) - 智能钓鱼状态机
+
+### 🔧 公共模块 (modules/)
+- **配置管理**: [modules/config_manager.py](mdc:modules/config_manager.py) - 全局配置系统
+- **日志系统**: [modules/logger.py](mdc:modules/logger.py) - 彩色日志和滚动管理
+
+### 🛠️ 工具类库 (utils/)
+- **图像处理**: [utils/image_utils.py](mdc:utils/image_utils.py) - OpenCV图像预处理
+- **OCR识别**: [utils/ocr_utils.py](mdc:utils/ocr_utils.py) - Tesseract文字识别
+- **热键管理**: [utils/hotkey_utils.py](mdc:utils/hotkey_utils.py) - 全局热键监听
+- **文件操作**: [utils/file_utils.py](mdc:utils/file_utils.py) - 文件和目录管理
+
+### 📁 数据管理目录 (data/)
+- **原始数据**: [data/raw/images/](mdc:data/raw/images) - 原始截图数据按分类存储
+- **原始标注**: [data/raw/labels/](mdc:data/raw/labels) - 原始YOLO标注文件
+- **训练数据**: [data/train/](mdc:data/train) - YOLO训练集
+- **验证数据**: [data/val/](mdc:data/val) - YOLO验证集
+- **处理数据**: [data/processed/](mdc:data/processed) - ROI处理后图像
+- **文本数据库**: [data/text_database.yaml](mdc:data/text_database.yaml) - OCR文本记录
+- **训练配置**: [data/train_config.yaml](mdc:data/train_config.yaml) - 动态生成的YOLO训练配置
+
+### 🎯 模型文件目录 (model/)
+- **预训练模型**: [model/yolo11n.pt](mdc:model/yolo11n.pt) - YOLO11基础模型
+- **预训练模型**: [model/yolov8n.pt](mdc:model/yolov8n.pt) - YOLOv8基础模型
+
+### 🏃 训练结果目录 (runs/)
+- **训练目录**: [runs/fishing_train_*/](mdc:runs/fishing_train_*) - 训练过程文件
+- **最新模型**: [runs/fishing_model_latest.pt](mdc:runs/fishing_model_latest.pt) - 最新训练模型
+- **时间戳模型**: [runs/fishing_model_*.pt](mdc:runs/fishing_model_*.pt) - 带时间戳的模型副本
+
+### ⚙️ 配置系统 (config/)
+- **主配置**: [config/config.yaml](mdc:config/config.yaml) - 系统全局配置
+- **热键配置**: [config/hotkeys.yaml](mdc:config/hotkeys.yaml) - 用户自定义热键
+- **OCR配置**: [config/ocr_config.yaml](mdc:config/ocr_config.yaml) - OCR参数配置
+
+### 📄 其他目录
+- **日志文件**: [logs/](mdc:logs) - 系统运行日志（自动生成）
+- **资源文件**: [assets/](mdc:assets) - 图标和界面资源
+- **测试文件**: [tests/](mdc:tests) - 单元测试和集成测试
+- **项目文档**: [docs/](mdc:docs) - 完整项目文档
+
+## 🏗️ 历史版本归档 (legacy/)
+- **旧版脚本**: [legacy/scripts/](mdc:legacy/scripts) - v1.x版本功能脚本
+- **旧版工具**: [legacy/tool/](mdc:legacy/tool) - v1.x版本截图工具
+
+## 🚀 启动方式
+
+### 主程序启动
+```bash
+# 启动主程序（推荐）
+python main.py
+```
+
+### 独立模块启动
+```bash
+# 数据采集模块
+python modules/data_collector/main.py
+
+# 模型训练模块
+python modules/model_trainer/main.py
+
+# 命令行训练模式
+python modules/model_trainer/main.py --pipeline
+```
+
+## ✨ v2.3 核心特性
+
+### 🎯 数据采集模块特性
+- **MVC架构** - 清晰的代码结构和职责分离
+- **高DPI支持** - 自适应高分辨率显示器
+- **热键系统** - 全局热键监听和配置
+- **管理员模式** - 自动管理员权限处理
+- **数据管理** - 智能数据分类和存储
+- **ROI处理** - 区域选择和图像预处理
+- **OCR集成** - 文字识别和数据库存储
+
+### 🧠 模型训练模块特性
+- **端到端训练** - 从原始数据到模型完成的完整流程
+- **动态类别检测** - 自动识别和映射数据类别
+- **专业训练策略** - 学习率调度、早停、混合精度
+- **实时监控** - 训练进度和性能指标监控
+- **模型管理** - 自动下载、保存和版本管理
+- **桌面测试** - 独立的模型测试工具
+- **配置灵活** - 丰富的训练参数配置
+
+### 🎣 自动钓鱼模块特性
+- **状态机设计** - 11种钓鱼状态智能识别
+- **混合判断** - 图像识别+OCR文字识别
+- **实时响应** - 毫秒级状态检测和响应
+- **外设模拟** - 精确的鼠标键盘操作
+
+## 🔄 模块间协作
+
+### 数据流向
+```
+数据采集 → 原始数据(data/raw/) → 训练模块 → 训练模型(runs/) → 自动钓鱼
+```
+
+### 配置共享
+- 全局配置：`config/config.yaml`
+- 热键配置：`config/hotkeys.yaml`
+- 模块配置：各模块独立配置文件
+
+### 日志统一
+- 统一日志格式和颜色方案
+- 自动日志滚动和存储
+- 模块级别的日志管理
+
+## 🎮 开发模式
+
+### 模块独立性
+- 每个模块可独立开发和测试
+- 标准化的模块启动接口
+- 清晰的模块间接口定义
+
+### 测试支持
+- 单元测试框架
+- 集成测试支持
+- 模块功能验证
+
+### 文档完善
+- 详细的API文档
+- 使用说明和示例
+- 故障排除指南
+
+## 🏆 技术亮点
+
+### 架构设计
+- **模块化** - 清晰的功能模块划分
+- **可扩展** - 易于添加新功能和模块
+- **可维护** - 良好的代码结构和文档
+- **可测试** - 完整的测试框架支持
+
+### 性能优化
+- **GPU加速** - CUDA支持和自动设备检测
+- **内存优化** - 智能内存管理和缓存策略
+- **实时响应** - 毫秒级的响应时间
+- **并发处理** - 多线程和异步处理
+
+### 用户体验
+- **图形界面** - 友好的GUI界面
+- **配置灵活** - 丰富的配置选项
+- **状态监控** - 实时状态显示和反馈
+- **错误处理** - 完善的错误处理和恢复机制
+

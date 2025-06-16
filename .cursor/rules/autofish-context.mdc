@@ -1,0 +1,185 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# AutoFish v2.3 - 智能化钓鱼辅助工具
+
+## 项目概述
+基于YOLO深度学习模型的智能化钓鱼辅助工具，采用模块化架构设计，集成训练数据采集、AI模型训练、自动化钓鱼脚本三大核心功能模块。
+
+## 核心特色
+- 🎯 **模块化设计** - 清晰的三模块架构，易于扩展和维护
+- 🤖 **AI驱动** - 基于YOLO的图像识别 + OCR文字识别
+- 🖥️ **图形化界面** - 用户友好的桌面应用程序
+- ⚙️ **配置管理** - 灵活的配置系统，支持热键自定义
+- 📊 **日志监控** - 完善的日志系统，便于调试和监控
+
+## 三大核心模块
+
+### 模块一：数据采集 (modules/data_collector/) - **v2.3 MVC重构**
+- 🏗️ **MVC架构** - Model-View-Controller清晰分离
+- 🔧 **UI管理器** - 专门的界面管理器，支持高DPI显示器
+- 📊 **业务逻辑** - 独立的数据采集和处理逻辑
+- 📁 **数据管理器** - 智能数据分类和存储管理
+- 🖱️ **屏幕捕获** - 区域选择和截图功能
+- ⌨️ **热键监听** - 全局热键系统和配置界面
+- 🛡️ **管理员模式** - 自动管理员权限处理
+- 🏷️ **OCR集成** - 文字提取和数据库管理
+- 📁 **自动预处理** - ROI提取和图像优化
+
+### 模块二：模型训练 (modules/model_trainer/) - **v2.3 完整流程**
+- 🧠 **训练流程** - 端到端完整训练管道
+- 🎯 **动态检测** - 自动类别检测和映射系统 
+- 🧪 **桌面测试** - 独立的模型测试工具
+- 📈 **训练监控** - 实时进度和性能监控
+- 🎯 **YOLO训练器** - 专业的模型训练核心
+- 📊 **数据处理器** - 智能数据分割和处理
+- ⚙️ **配置管理** - 丰富的训练参数配置
+- 🔄 **模型验证** - 独立的验证工具和指标分析
+- 💾 **模型管理** - 自动下载、保存和版本管理
+
+### 模块三：自动钓鱼 (modules/auto_fisher.py)
+- 🎣 **状态机逻辑** - 11种钓鱼状态智能识别
+- 👁️ **混合判断** - 图像识别+OCR混合判断系统
+- 🖱️ **外设操作** - 精确的鼠标键盘模拟
+- 📊 **实时监控** - 状态监控和反馈界面
+
+## 钓鱼状态识别（11种状态）
+- `进入钓鱼状态` / `未进入钓鱼状态` - 基础状态检测
+- `有鱼饵` / `没有鱼饵` - 鱼饵状态监控
+- `选饵状态` - 选择鱼饵界面
+- `等待上钩状态` - 抛竿后等待
+- `鱼上钩未提线状态` - 鱼咬钩检测
+- `提线中_耐力未到二分之一` / `提线中_耐力已到二分之一` - 耐力管理
+- `向左拉_txt` / `向右拉_txt` - 文字识别的方向提示
+- `钓鱼成功状态_txt` - 成功钓鱼检测
+
+## 项目架构
+
+### 主程序入口
+- **主界面**: [main.py](mdc:main.py) - 模块选择和启动界面
+
+### 核心模块 (modules/)
+- **日志系统**: [modules/logger.py](mdc:modules/logger.py) - 彩色日志和滚动管理
+- **配置管理**: [modules/config_manager.py](mdc:modules/config_manager.py) - 全局配置和热键管理
+- **数据采集**: [modules/data_collector/](mdc:modules/data_collector) - MVC架构的数据采集模块
+- **模型训练**: [modules/model_trainer/](mdc:modules/model_trainer) - 完整的YOLO训练和测试模块
+- **自动钓鱼**: [modules/auto_fisher.py](mdc:modules/auto_fisher.py) - 自动化钓鱼脚本
+
+### 工具类库 (utils/)
+- **图像处理**: [utils/image_utils.py](mdc:utils/image_utils.py) - 图像预处理和ROI提取
+- **OCR识别**: [utils/ocr_utils.py](mdc:utils/ocr_utils.py) - Tesseract文字识别
+- **热键管理**: [utils/hotkey_utils.py](mdc:utils/hotkey_utils.py) - 全局热键监听
+- **文件操作**: [utils/file_utils.py](mdc:utils/file_utils.py) - 文件和目录管理
+
+### 数据管理 (data/)
+- **原始数据**: [data/raw/images/](mdc:data/raw/images) - 原始截图数据存储
+- **原始标注**: [data/raw/labels/](mdc:data/raw/labels) - 原始YOLO标注文件
+- **训练数据**: [data/train/](mdc:data/train) - 训练集
+- **验证数据**: [data/val/](mdc:data/val) - 验证集
+- **处理数据**: [data/processed/](mdc:data/processed) - ROI处理后图像
+- **文本数据库**: [data/text_database.yaml](mdc:data/text_database.yaml) - OCR文本记录
+
+### 模型文件 (model/)
+- **预训练模型**: [model/yolo11n.pt](mdc:model/yolo11n.pt) - YOLO11基础模型
+- **预训练模型**: [model/yolov8n.pt](mdc:model/yolov8n.pt) - YOLOv8基础模型
+
+### 训练结果 (runs/)
+- **训练目录**: [runs/fishing_train_*/](mdc:runs/fishing_train_*/) - 训练过程和结果
+- **最新模型**: [runs/fishing_model_latest.pt](mdc:runs/fishing_model_latest.pt) - 最新训练模型
+- **历史模型**: [runs/fishing_model_*.pt](mdc:runs/fishing_model_*.pt) - 带时间戳的模型副本
+
+### 配置系统 (config/)
+- **主配置**: [config/config.yaml](mdc:config/config.yaml) - 系统主配置
+- **热键配置**: [config/hotkeys.yaml](mdc:config/hotkeys.yaml) - 自定义热键
+- **OCR配置**: [config/ocr_config.yaml](mdc:config/ocr_config.yaml) - OCR参数配置
+
+## 技术栈
+- **深度学习**: YOLOv8/YOLO11 + PyTorch
+- **图像处理**: OpenCV + PIL
+- **文字识别**: Tesseract OCR
+- **GUI界面**: Tkinter
+- **配置管理**: YAML
+- **屏幕操作**: PyAutoGUI + MSS
+- **热键监听**: keyboard + mouse
+
+## OCR配置
+- **Tesseract路径**: `D:\Python\tool\Tesseract-OCR`
+- **识别语言**: 中文简体 + 英文 (`chi_sim+eng`)
+- **置信度阈值**: 60%
+- **预处理**: 缩放、降噪、对比度增强
+
+## 热键系统
+- `Ctrl+Alt+Y` - 开始截图选择区域
+- `Y` - 快速截图
+- `Q` - 停止截图
+- `Ctrl+Alt+Q` - 紧急停止
+- `Ctrl+Alt+P` - 暂停钓鱼
+- `Ctrl+Alt+R` - 恢复钓鱼
+
+## 开发状态 v2.3
+- ✅ 项目架构重构 - 模块化设计完成
+- ✅ 主程序界面 - 图形化入口完成
+- ✅ 日志系统 - 彩色日志和滚动管理
+- ✅ 配置管理 - YAML配置系统
+- ✅ 数据采集模块 - v2.3 MVC架构重构完成
+- ✅ 模型训练模块 - v2.3 完整训练流程完成
+- 🔄 自动钓鱼模块 - 开发中
+
+## v2.3 重大更新
+
+### 🎯 数据采集模块 v2.3
+- **MVC架构重构** - 清晰的代码结构和职责分离
+- **UI管理器独立** - 专门的界面管理，支持高DPI显示器
+- **业务逻辑分离** - 独立的数据采集和处理逻辑
+- **数据管理器** - 智能的数据分类和存储系统
+- **管理员权限** - 自动管理员权限检测和处理
+- **热键配置界面** - 用户友好的热键配置对话框
+- **系统设置界面** - 完善的系统参数配置
+
+### 🧠 模型训练模块 v2.3  
+- **端到端训练** - 从原始数据到训练完成的完整流程
+- **动态类别检测** - 自动从数据目录检测和映射类别
+- **专业训练策略** - 学习率调度、早停、混合精度等
+- **实时监控系统** - 训练进度和性能指标实时显示
+- **模型自动管理** - 预训练模型下载、保存和版本管理
+- **独立测试工具** - 桌面测试工具可独立运行
+- **配置系统增强** - 丰富的训练参数配置选项
+
+### 📊 系统功能增强
+- **统一日志系统** - 彩色分级日志，自动滚动存储
+- **配置管理升级** - 全局配置和模块配置统一管理
+- **错误处理完善** - 详细的错误捕获和恢复机制
+- **性能优化** - GPU加速，内存优化，实时响应
+- **文档完善** - 详细的使用说明和API文档
+
+## 历史版本归档
+- **Legacy代码**: [legacy/](mdc:legacy) - v1.x版本代码归档
+- **旧脚本**: [legacy/scripts/](mdc:legacy/scripts) - 原有功能脚本
+- **旧工具**: [legacy/tool/](mdc:legacy/tool) - 原截图工具代码
+
+## 开发原则
+- 当一个文件过大（代码行数超过六百行时）请将该文件切割成多个文件（按照什么来切割依情况而定，合理即可）
+- 模块化开发，每个模块功能独立，接口清晰
+- 配置与代码分离，便于维护和定制
+- 完善的日志系统，便于调试和监控
+- 用户友好的界面设计，操作简单直观
+
+## 启动方式
+```bash
+# 启动主程序（推荐）
+python main.py
+
+# 独立启动模块（开发调试）
+python modules/data_collector/main.py      # 数据采集
+python modules/model_trainer/main.py       # 模型训练
+python modules/model_trainer/main.py --pipeline  # 命令行训练
+```
+
+## 未来规划
+- 🔄 自动钓鱼模块完善和优化
+- 🎮 更多游戏状态的支持
+- 🤖 AI策略的智能化提升
+- 📱 移动端支持和远程监控
+- 🌐 云端训练和模型分享平台

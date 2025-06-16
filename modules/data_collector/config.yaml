@@ -1,0 +1,45 @@
+data_collection:
+  data_dir: data
+  image_format: png
+  image_quality: 95
+  max_images_per_category: 1000
+hotkeys:
+  pause_capture: ctrl+alt+p
+  quick_capture: y
+  select_region: ctrl+alt+y
+logging:
+  file: data_collector.log
+  level: INFO
+module_info:
+  author: AutoFish Team
+  description: 智能化数据采集工具 - 支持YOLO格式标注
+  name: DataCollector
+  standalone: true
+  version: '2.3'
+ocr:
+  confidence_threshold: 60
+  enabled: false
+  language: chi_sim+eng
+screenshot:
+  compression_quality: 95
+  monitor: 0
+ui:
+  font_family: Microsoft YaHei
+  preview_size: 200
+  window_size: 1000x700
+  window_title: 🎯 YOLO数据采集工具
+yolo:
+  annotation_format: yolo
+  class_names:
+  - 进入钓鱼状态
+  - 未进入钓鱼状态
+  - 有鱼饵
+  - 没有鱼饵
+  - 选饵状态
+  - 等待上钩状态
+  - 鱼上钩未提线状态
+  - 提线中_耐力未到二分之一
+  - 提线中_耐力已到二分之一
+  - 向左拉_txt
+  - 向右拉_txt
+  - 钓鱼成功状态_txt

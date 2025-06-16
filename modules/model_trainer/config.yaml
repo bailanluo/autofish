@@ -1,0 +1,224 @@
+# AutoFish 模型训练配置文件
+# 针对钓鱼状态检测任务的专业训练参数配置
+
+# 模型配置
+models:
+  # 检测模型配置
+  detection:
+    yolov8n:
+      name: "YOLOv8 Nano"
+      description: "轻量级检测模型，适合CPU推理"
+      epochs: 100
+      batch_size: 16
+      learning_rate: 0.01
+      image_size: 640
+      patience: 50
+      save_period: 10
+      
+    yolov8s:
+      name: "YOLOv8 Small"
+      description: "中等检测模型，推荐用于钓鱼检测"
+      epochs: 150
+      batch_size: 16
+      learning_rate: 0.01
+      image_size: 640
+      patience: 50
+      save_period: 10
+      
+    yolov8m:
+      name: "YOLOv8 Medium"
+      description: "大型检测模型，高精度"
+      epochs: 200
+      batch_size: 8
+      learning_rate: 0.01
+      image_size: 640
+      patience: 50
+      save_period: 10
+      
+    yolo11n:
+      name: "YOLO11 Nano"
+      description: "最新轻量级检测模型"
+      epochs: 100
+      batch_size: 16
+      learning_rate: 0.01
+      image_size: 640
+      patience: 50
+      save_period: 10
+      
+    yolo11s:
+      name: "YOLO11 Small"
+      description: "最新中等检测模型，推荐"
+      epochs: 150
+      batch_size: 16
+      learning_rate: 0.01
+      image_size: 640
+      patience: 50
+      save_period: 10
+
+  # 分类模型配置
+  classification:
+    yolov8n-cls:
+      name: "YOLOv8 Nano 分类"
+      description: "轻量级分类模型"
+      epochs: 100
+      batch_size: 32
+      learning_rate: 0.001
+      image_size: 224
+      patience: 30
+      save_period: 10
+      
+    yolo11n-cls:
+      name: "YOLO11 Nano 分类"
+      description: "最新轻量级分类模型"
+      epochs: 100
+      batch_size: 32
+      learning_rate: 0.001
+      image_size: 224
+      patience: 30
+      save_period: 10
+
+# 训练策略配置
+training:
+  # K折交叉验证
+  k_fold:
+    default_folds: 5
+    min_folds: 3
+    max_folds: 10
+    
+  # 数据增强
+  augmentation:
+    hsv_h: 0.015
+    hsv_s: 0.7
+    hsv_v: 0.4
+    degrees: 0.0
+    translate: 0.1
+    scale: 0.5
+    shear: 0.0
+    perspective: 0.0
+    flipud: 0.0
+    fliplr: 0.5
+    mosaic: 1.0
+    mixup: 0.0
+    
+  # 优化器配置
+  optimizer:
+    name: "AdamW"
+    momentum: 0.937
+    weight_decay: 0.0005
+    
+  # 学习率调度
+  scheduler:
+    name: "cosine"
+    lr0: 0.01
+    lrf: 0.01
+    
+  # 早停配置
+  early_stopping:
+    patience: 50  # 默认耐心值
+    min_delta: 0.001  # 最小改善阈值
+    monitor_metric: "map50"  # 监控指标 (detection: map50, classification: accuracy)
+    mode: "max"  # 监控模式 (max: 指标越大越好, min: 指标越小越好)
+    restore_best_weights: true  # 是否恢复最佳权重
+    verbose: true  # 是否显示早停信息
+
+# 硬件配置
+hardware:
+  # GPU配置
+  gpu:
+    auto_detect: true
+    device: "0"  # GPU设备ID
+    
+  # 内存配置
+  memory:
+    workers: 8  # 数据加载线程数
+    pin_memory: true
+    
+  # 批处理配置
+  batch:
+    auto_batch: true  # 自动调整批次大小
+    
+# 数据配置
+data:
+  # 数据路径
+  paths:
+    raw_images: "data/raw/images"    # 原始图片数据路径
+    raw_labels: "data/raw/labels"    # 原始标注数据路径
+    train: "data/train"              # 训练集输出路径
+    val: "data/val"                  # 验证集输出路径
+    train_images: "data/train/images"
+    train_labels: "data/train/labels"
+    val_images: "data/val/images"
+    val_labels: "data/val/labels"
+    
+  # 数据分割
+  split:
+    train_ratio: 0.8
+    val_ratio: 0.2
+    
+  # 类别配置 - 动态生成，从data/raw/images/目录结构获取
+  # 实际类别数量和名称由DataProcessor自动扫描确定
+  # 运行时会在data/train_config.yaml中生成完整的类别配置
+  dynamic_classes: true
+  note: "类别信息将根据data/raw/images/下的文件夹自动生成"
+
+# 验证配置
+validation:
+  # 验证指标
+  metrics:
+    detection: ["precision", "recall", "map50", "map75"]
+    classification: ["accuracy", "precision", "recall", "f1_score"]
+    
+  # 置信度阈值
+  confidence:
+    default: 0.5
+    min: 0.1
+    max: 0.9
+    step: 0.05
+    
+  # IoU阈值
+  iou:
+    default: 0.5
+    min: 0.1
+    max: 0.9
+    step: 0.05
+
+# 输出配置
+output:
+  # 模型保存
+  models:
+    save_dir: "model"
+    save_best: true
+    save_last: true
+    save_period: 10
+    
+  # 日志配置
+  logging:
+    level: "INFO"
+    save_dir: "logs"
+    tensorboard: true
+    
+  # 可视化配置
+  visualization:
+    save_plots: true
+    plot_dir: "runs/train"
+    
+# 推理配置
+inference:
+  # 默认参数
+  default:
+    confidence: 0.5
+    iou: 0.5
+    max_det: 1000
+    
+  # 图片尺寸选项
+  image_sizes: [320, 416, 512, 640, 800, 1024, 1280]
+  
+  # 支持的图片格式
+  supported_formats: [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
+
+# 项目特定配置
+project:
+  name: "AutoFish"
+  version: "2.3"
+  task: "fishing_detection"
+  description: "智能钓鱼状态检测模型训练" 

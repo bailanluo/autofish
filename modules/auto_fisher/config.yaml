@@ -1,0 +1,80 @@
+display:
+  show_status: true
+  show_detection: false
+  show_debug_info: false
+  show_ocr_result: false
+  status_position:
+    x: 10
+    y: 10
+  status_style:
+    background_color: '#000000'
+    font: Arial
+    opacity: 0.7
+    padding: 5
+    size: 14
+    text_color: '#00FF00'
+fishing:
+  click_interval:
+    max: 0.127
+    min: 0.054
+  click_slowdown_factor: 4.0
+  key_press_duration:
+    direction_key: 1.0
+    mouse_long_press: 1.0
+  wait_times:
+    state_0_timeout: 2.0
+    state_3_pause: 1.0
+    state_6_wait: 1.5
+hotkeys:
+  start: ctrl+alt+y
+  stop: ctrl+y
+model:
+  class_mapping:
+    0: 等待上钩状态
+    1: 鱼上钩末提线状态
+    2: 提线中_耐力未到二分之一状态
+    3: 提线中_耐力已到二分之一状态
+    4: 向右拉_txt
+    5: 向左拉_txt
+    6: 钓鱼成功状态_txt
+  confidence: 0.6
+  fps: 10.0
+  path: runs/fishing_model_latest.pt
+  debug: true
+ui:
+  position:
+    x: 100
+    y: 100
+  size:
+    height: 300
+    width: 400
+  theme:
+    accent_color: '#e74c3c'
+    background_color: '#2c3e50'
+    button_color: '#3498db'
+    text_color: '#ecf0f1'
+  title: AutoFish - 自动钓鱼
+ocr:
+  enabled: true
+  tesseract_path: D:\Python\tool\Tesseract-OCR\tesseract.exe
+  language: chi_sim
+  config: --psm 7 --oem 1
+  confidence: 60
+  region:
+    auto_detect: true
+    x: 0
+    y: 0
+    width: 0
+    height: 0
+  keywords:
+    left:
+      - 向左拉
+      - 左拉
+      - 向左
+      - 拉左
+    right:
+      - 向右拉
+      - 右拉
+      - 向右
+      - 拉右
+  key_duration: 1.0
