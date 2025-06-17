@@ -1,6 +1,7 @@
 # Fisher钓鱼模块配置文件
-# 版本: v1.0
+# 版本: v1.0.6
 # 创建时间: 2024-12-28
+# 更新时间: 2025-01-17
 
 # 模型配置
 model:
@@ -8,13 +9,6 @@ model:
   confidence_threshold: 0.5                   # 置信度阈值
   device: "auto"                             # 设备选择: auto/cpu/cuda
   detection_interval: 0.1                    # 检测间隔(秒)
-
-# OCR配置
-ocr:
-  tesseract_path: "D:\\Python\\tool\\Tesseract-OCR"  # Tesseract路径
-  language: "chi_sim+eng"                             # 识别语言
-  confidence_threshold: 60                            # 置信度阈值
-  detection_interval: 0.2                            # OCR检测间隔(秒)
 
 # 时间配置
 timing:

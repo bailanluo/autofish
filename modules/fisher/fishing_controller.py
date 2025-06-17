@@ -1,10 +1,11 @@
 """
 Fisher钓鱼模块核心控制器
-实现钓鱼状态机逻辑和多线程协调，协调模型检测、OCR识别和输入控制
+实现钓鱼状态机逻辑和多线程协调，协调模型检测和输入控制
 
 作者: AutoFish Team
-版本: v1.0
+版本: v1.0.6
 创建时间: 2024-12-28
+更新时间: 2025-01-17
 """
 
 import time
@@ -15,7 +16,6 @@ from dataclasses import dataclass
 
 from .config import fisher_config
 from .model_detector import model_detector
-from .ocr_detector import ocr_detector
 from .input_controller import input_controller
 
 
@@ -37,7 +37,6 @@ class FishingStatus:
     """钓鱼状态信息"""
     current_state: FishingState = FishingState.STOPPED
     current_detected_state: Optional[int] = None  # 当前检测到的YOLO状态
-    current_ocr_state: Optional[int] = None  # 当前检测到的OCR状态  
     confidence: float = 0.0  # 检测置信度
     round_count: int = 0  # 钓鱼轮数
     start_time: Optional[float] = None  # 开始时间
@@ -58,12 +57,7 @@ class FishingController:
         
         # 线程管理
         self.main_thread: Optional[threading.Thread] = None  # 主控制线程
-        self.ocr_thread: Optional[threading.Thread] = None  # OCR线程
         self.thread_lock = threading.Lock()  # 线程锁
-        
-        # 事件通信
-        self.ocr_active = threading.Event()  # OCR激活事件
-        self.ocr_stop = threading.Event()  # OCR停止事件
         
         # 简单按键循环相关
         self.key_cycle_thread: Optional[threading.Thread] = None  # 按键循环线程
@@ -116,60 +110,6 @@ class FishingController:
             except Exception as e:
                 print(f"状态回调失败: {e}")
     
-    def _ocr_worker(self) -> None:
-        """
-        OCR工作线程
-        在状态2和3时持续检测方向文字并执行对应按键
-        """
-        print("OCR线程启动")
-        
-        while not self.ocr_stop.is_set():
-            # 等待OCR激活信号
-            if self.ocr_active.wait(timeout=0.1):
-                try:
-                    # 检测方向文字
-                    direction_result = ocr_detector.detect_direction_text_with_confidence()
-                    
-                    if direction_result:
-                        direction_state = direction_result['state']
-                        self.status.current_ocr_state = direction_state
-                        
-                        # 根据方向执行按键
-                        input_controller.handle_direction_key(direction_state)
-                        
-                        print(f"OCR检测到方向: {direction_result['text']} (状态{direction_state})")
-                    
-                    # OCR检测间隔
-                    time.sleep(fisher_config.ocr.detection_interval)
-                    
-                except Exception as e:
-                    print(f"OCR检测失败: {e}")
-                    time.sleep(0.5)
-            
-            # 检查是否需要停止OCR
-            if not self.ocr_active.is_set():
-                self.status.current_ocr_state = None
-        
-        print("OCR线程结束")
-    
-    def _start_ocr_thread(self) -> None:
-        """启动OCR线程"""
-        if not self.ocr_thread or not self.ocr_thread.is_alive():
-            self.ocr_stop.clear()
-            self.ocr_thread = threading.Thread(target=self._ocr_worker, daemon=True)
-            self.ocr_thread.start()
-    
-    def _activate_ocr(self) -> None:
-        """激活OCR检测"""
-        self._start_ocr_thread()
-        self.ocr_active.set()
-        print("OCR检测已激活")
-    
-    def _deactivate_ocr(self) -> None:
-        """停用OCR检测"""
-        self.ocr_active.clear()
-        print("OCR检测已停用")
-    
     def _key_cycle_worker(self) -> None:
         """
         简单按键循环工作线程
@@ -198,7 +138,6 @@ class FishingController:
                     # 切换到下一个键
                     key_index = (key_index + 1) % len(key_sequence)
                 else:
-                    # 收到停止信号，退出循环
                     break
                     
             except Exception as e:
@@ -208,7 +147,7 @@ class FishingController:
         print("按键循环线程结束")
     
     def _start_key_cycle(self) -> None:
-        """启动按键循环线程"""
+        """启动按键循环"""
         if not self.key_cycle_thread or not self.key_cycle_thread.is_alive():
             self.key_cycle_stop.clear()
             self.key_cycle_thread = threading.Thread(target=self._key_cycle_worker, daemon=True)
@@ -216,11 +155,9 @@ class FishingController:
             print("按键循环已启动")
     
     def _stop_key_cycle(self) -> None:
-        """停止按键循环线程"""
-        if self.key_cycle_thread and self.key_cycle_thread.is_alive():
-            self.key_cycle_stop.set()
-            self.key_cycle_thread.join(timeout=2.0)
-            print("按键循环已停止")
+        """停止按键循环"""
+        self.key_cycle_stop.set()
+        print("按键循环已停止")
     
     def _wait_for_initial_state(self) -> bool:
         """
@@ -257,6 +194,7 @@ class FishingController:
                     return True
                 elif detected_state == 1:
                     self._update_status(FishingState.FISH_HOOKED)
+                    # 直接处理鱼上钩状态
                     return self._handle_fish_hooked()
             
             time.sleep(fisher_config.model.detection_interval)
@@ -321,6 +259,9 @@ class FishingController:
         # 启动简单按键循环（替代OCR）
         self._start_key_cycle()
         
+        # 初始化状态，确保正确进入状态2
+        previous_detected_state = None
+        
         while not self.should_stop:
             # 检测当前状态
             result = model_detector.detect_multiple_states([2, 3, 6])
@@ -334,29 +275,31 @@ class FishingController:
             
             self._update_status(detected_state=detected_state, confidence=confidence)
             
-            if detected_state == 2:  # 提线中_耐力未到二分之一
-                if self.status.current_state != FishingState.PULLING_NORMAL:
+            # 只有当状态发生变化时才进行处理，避免重复操作
+            if detected_state != previous_detected_state:
+                if detected_state == 2:  # 提线中_耐力未到二分之一
                     print("状态2: 继续快速点击")
                     self._update_status(FishingState.PULLING_NORMAL)
                     input_controller.resume_clicking()
-                
-            elif detected_state == 3:  # 提线中_耐力已到二分之一
-                if self.status.current_state != FishingState.PULLING_HALFWAY:
+                    
+                elif detected_state == 3:  # 提线中_耐力已到二分之一
                     print("状态3: 暂停点击")
                     self._update_status(FishingState.PULLING_HALFWAY)
                     input_controller.pause_clicking()
                     
                     # 等待1秒后重新检测
                     time.sleep(fisher_config.timing.state3_pause_time)
+                    
+                elif detected_state == 6:  # 钓鱼成功
+                    print("检测到钓鱼成功状态！")
+                    
+                    # 停止点击和按键循环
+                    input_controller.stop_clicking()
+                    self._stop_key_cycle()
+                    
+                    return self._handle_success()
                 
-            elif detected_state == 6:  # 钓鱼成功
-                print("检测到钓鱼成功状态！")
-                
-                # 停止点击和按键循环
-                input_controller.stop_clicking()
-                self._stop_key_cycle()
-                
-                return self._handle_success()
+                previous_detected_state = detected_state
             
             time.sleep(fisher_config.model.detection_interval)
         
@@ -427,6 +370,9 @@ class FishingController:
                     if not self._wait_for_hook():
                         break
                 
+                # 注意：如果初始状态是1，_wait_for_initial_state()中已经处理了完整的钓鱼流程
+                # 只有当初始状态是0时，才需要继续处理后续流程
+                
                 # 抛竿并准备下一轮
                 if not self._handle_casting():
                     break
@@ -456,10 +402,6 @@ class FishingController:
         # 检查初始化状态
         if not model_detector.is_initialized:
             print("模型检测器未初始化")
-            return False
-        
-        if not ocr_detector.is_initialized:
-            print("OCR检测器未初始化")
             return False
         
         # 重置状态
@@ -504,19 +446,11 @@ class FishingController:
         """清理资源"""
         print("清理钓鱼控制器资源...")
         
-        # 停用OCR
-        self._deactivate_ocr()
-        self.ocr_stop.set()
-        
         # 停止按键循环
         self._stop_key_cycle()
         
         # 停止输入操作
         input_controller.emergency_stop()
-        
-        # 等待OCR线程结束
-        if self.ocr_thread and self.ocr_thread.is_alive():
-            self.ocr_thread.join(timeout=2.0)
         
         # 等待按键循环线程结束
         if self.key_cycle_thread and self.key_cycle_thread.is_alive():
