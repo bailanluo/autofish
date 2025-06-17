@@ -1,0 +1,40 @@
+# Fisher钓鱼模块配置文件
+# 版本: v1.0
+# 创建时间: 2024-12-28
+
+# 模型配置
+model:
+  model_path: "runs/fishing_model_latest.pt"  # 模型文件路径
+  confidence_threshold: 0.5                   # 置信度阈值
+  device: "auto"                             # 设备选择: auto/cpu/cuda
+  detection_interval: 0.1                    # 检测间隔(秒)
+
+# OCR配置
+ocr:
+  tesseract_path: "D:\\Python\\tool\\Tesseract-OCR"  # Tesseract路径
+  language: "chi_sim+eng"                             # 识别语言
+  confidence_threshold: 60                            # 置信度阈值
+  detection_interval: 0.2                            # OCR检测间隔(秒)
+
+# 时间配置
+timing:
+  initial_timeout: 180        # 初始状态超时时间(秒) - 3分钟
+  click_delay_min: 0.054      # 鼠标点击最小间隔(秒)
+  click_delay_max: 0.127      # 鼠标点击最大间隔(秒)
+  state3_pause_time: 1.0      # 状态3暂停时间(秒)
+  success_wait_time: 1.5      # 钓鱼成功等待时间(秒)
+  cast_hold_time: 2.0         # 抛竿长按时间(秒)
+  key_press_time: 1.0         # 按键持续时间(秒)
+
+# 热键配置
+hotkey:
+  start_fishing: "ctrl+alt+s"    # 开始钓鱼快捷键
+  stop_fishing: "ctrl+alt+x"     # 停止钓鱼快捷键
+  emergency_stop: "ctrl+alt+q"   # 紧急停止快捷键
+
+# UI配置
+ui:
+  show_status_window: true         # 是否显示状态窗口
+  status_window_position: [10, 10] # 状态窗口位置
+  status_window_color: "blue"      # 状态窗口文字颜色
+  main_window_size: [400, 300]     # 主窗口大小 

@@ -444,11 +444,6 @@ class FishingStateMachine:
                 self._start_rapid_clicking()  # 开始快速点击
                 self._change_state(FishingState.FISH_DETECTED)
                 return
-            # 如果当前已经是鱼上钩状态，且检测到提线中状态，则转换到提线中状态
-            elif self.current_state == FishingState.FISH_DETECTED and FishingState.PULLING_NORMAL in stable_states:
-                logging.info("从鱼上钩转为提线中状态")
-                self._change_state(FishingState.PULLING_NORMAL)
-                return
         
         # 5. 检查是否为等待上钩状态（最低优先级）
         if FishingState.WAITING_FOR_FISH in stable_states:
