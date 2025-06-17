@@ -113,7 +113,7 @@ class FishingController:
     def _key_cycle_worker(self) -> None:
         """
         简单按键循环工作线程
-        循环执行：按a键1秒 → 等待1秒 → 按d键1秒 → 等待1秒
+        循环执行：按a键1.5秒 → 等待0.5秒 → 按d键1.5秒 → 等待0.5秒
         """
         print("按键循环线程启动")
         
@@ -125,16 +125,16 @@ class FishingController:
                 # 获取当前要按的键
                 current_key = key_sequence[key_index]
                 
-                print(f"按键循环: 长按 {current_key} 键1秒")
+                print(f"按键循环: 长按 {current_key} 键1.5秒")
                 
-                # 长按当前键1秒
-                if input_controller.press_key(current_key, 1.0):
+                # 长按当前键1.5秒
+                if input_controller.press_key(current_key, 1.5):
                     print(f"按键 {current_key} 执行完成")
                 else:
                     print(f"按键 {current_key} 执行失败")
                 
-                # 等待1秒
-                if not self.key_cycle_stop.wait(timeout=1.0):
+                # 等待0.5秒
+                if not self.key_cycle_stop.wait(timeout=0.5):
                     # 切换到下一个键
                     key_index = (key_index + 1) % len(key_sequence)
                 else:
@@ -345,7 +345,7 @@ class FishingController:
         if input_controller.cast_rod():
             # 增加轮数计数
             self.status.round_count += 1
-            print(f"抛竿完成，开始第 {self.status.round_count + 1} 轮钓鱼")
+            print(f"抛竿完成，开始第 {self.status.round_count} 轮钓鱼")
             
             # 等待抛竿动画完成
             time.sleep(1.0)
