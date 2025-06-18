@@ -3,8 +3,10 @@ Fisher钓鱼模块YOLO模型检测器
 负责加载YOLO模型并识别钓鱼状态0-3和6
 
 作者: AutoFish Team  
-版本: v1.0
+版本: v1.0.1
 创建时间: 2024-12-28
+更新时间: 2025-01-17
+修复历史: v1.0.1 - 集成统一日志系统
 """
 
 import cv2
@@ -16,11 +18,18 @@ import mss
 import logging
 from ultralytics import YOLO
 
+# 导入统一日志系统
+import sys
+sys.path.append(str(Path(__file__).parent.parent))
+from logger import setup_logger
+
 from .config import fisher_config
 
 # 禁用ultralytics的详细日志输出
 logging.getLogger('ultralytics').setLevel(logging.WARNING)
 
+# 设置日志记录器
+logger = setup_logger('fisher_model')
 
 class ModelDetector:
     """YOLO模型检测器"""
@@ -50,23 +59,23 @@ class ModelDetector:
             # 获取模型路径
             model_path = fisher_config.get_model_path()
             if not Path(model_path).exists():
-                print(f"模型文件不存在: {model_path}")
+                logger.error(f"模型文件不存在: {model_path}")
                 return False
             
             # 设置计算设备
             self.device = self._get_device()
-            print(f"使用计算设备: {self.device}")
+            logger.info(f"使用计算设备: {self.device}")
             
             # 加载模型（禁用详细日志）
             self.model = YOLO(model_path, verbose=False)
             self.model.to(self.device)
             
-            print(f"模型加载成功: {model_path}")
+            logger.info(f"模型加载成功: {model_path}")
             self.is_initialized = True
             return True
             
         except Exception as e:
-            print(f"模型初始化失败: {e}")
+            logger.error(f"模型初始化失败: {e}")
             self.is_initialized = False
             return False
     
@@ -89,7 +98,7 @@ class ModelDetector:
             if torch.cuda.is_available():
                 return "cuda"
             else:
-                print("CUDA不可用，使用CPU")
+                logger.warning("CUDA不可用，使用CPU")
                 return "cpu"
         else:
             return "cpu"
@@ -142,7 +151,7 @@ class ModelDetector:
                 return img
                 
             except Exception as e:
-                print(f"屏幕截取失败 (尝试 {attempt + 1}/{max_retries}): {e}")
+                logger.error(f"屏幕截取失败 (尝试 {attempt + 1}/{max_retries}): {e}")
                 
                 # 确保关闭MSS对象
                 try:
@@ -153,7 +162,7 @@ class ModelDetector:
                 
                 # 如果是最后一次尝试，返回None
                 if attempt == max_retries - 1:
-                    print("屏幕截取彻底失败，已重试所有次数")
+                    logger.error("屏幕截取彻底失败，已重试所有次数")
                     return None
                 
                 # 短暂等待后重试
@@ -180,7 +189,7 @@ class ModelDetector:
             }
         """
         if not self.is_initialized:
-            print("模型未初始化")
+            logger.error("模型未初始化")
             return None
         
         try:
@@ -220,7 +229,7 @@ class ModelDetector:
             return None
             
         except Exception as e:
-            print(f"状态检测失败: {e}")
+            logger.error(f"状态检测失败: {e}")
             return None
     
     def detect_specific_state(self, target_state: int, 
@@ -283,7 +292,7 @@ class ModelDetector:
         Returns:
             bool: 重新加载是否成功
         """
-        print("正在重新加载模型...")
+        logger.info("正在重新加载模型...")
         self.is_initialized = False
         return self._initialize_model()
     
@@ -292,9 +301,9 @@ class ModelDetector:
         try:
             if self.model:
                 del self.model
-            print("模型检测器资源清理完成")
+            logger.info("模型检测器资源清理完成")
         except Exception as e:
-            print(f"资源清理失败: {e}")
+            logger.error(f"资源清理失败: {e}")
 
 # 全局模型检测器实例
 model_detector = ModelDetector() 

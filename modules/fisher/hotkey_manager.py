@@ -3,15 +3,26 @@ Fisher钓鱼模块热键管理器
 负责全局热键监听和处理
 
 作者: AutoFish Team
-版本: v1.0
+版本: v1.0.1
 创建时间: 2024-12-28
+更新时间: 2025-01-17
+修复历史: v1.0.1 - 集成统一日志系统
 """
 
 import keyboard
 import threading
 from typing import Optional, Callable
 
+# 导入统一日志系统
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+from logger import setup_logger
+
 from .config import fisher_config
+
+# 设置日志记录器
+logger = setup_logger('fisher_hotkey')
 
 
 class HotkeyManager:
@@ -30,7 +41,7 @@ class HotkeyManager:
         self.stop_callback: Optional[Callable] = None
         self.emergency_callback: Optional[Callable] = None
         
-        print("热键管理器初始化完成")
+        logger.info("热键管理器初始化完成")
     
     def set_callbacks(self, start_callback: Optional[Callable] = None,
                      stop_callback: Optional[Callable] = None,
@@ -71,25 +82,25 @@ class HotkeyManager:
             if fisher_config.hotkey.start_fishing == fisher_config.hotkey.stop_fishing:
                 # 相同热键，注册为切换功能
                 keyboard.add_hotkey(fisher_config.hotkey.start_fishing, self._on_toggle_fishing)
-                print(f"热键监听已启动:")
-                print(f"  切换钓鱼: {fisher_config.hotkey.start_fishing} (开始/停止)")
+                logger.info("热键监听已启动:")
+                logger.info(f"  切换钓鱼: {fisher_config.hotkey.start_fishing} (开始/停止)")
             else:
                 # 不同热键，分别注册
                 keyboard.add_hotkey(fisher_config.hotkey.start_fishing, self._on_start_fishing)
                 keyboard.add_hotkey(fisher_config.hotkey.stop_fishing, self._on_stop_fishing)
-                print(f"热键监听已启动:")
-                print(f"  开始钓鱼: {fisher_config.hotkey.start_fishing}")
-                print(f"  停止钓鱼: {fisher_config.hotkey.stop_fishing}")
+                logger.info("热键监听已启动:")
+                logger.info(f"  开始钓鱼: {fisher_config.hotkey.start_fishing}")
+                logger.info(f"  停止钓鱼: {fisher_config.hotkey.stop_fishing}")
             
             # 注册紧急停止热键
             keyboard.add_hotkey(fisher_config.hotkey.emergency_stop, self._on_emergency_stop)
-            print(f"  紧急停止: {fisher_config.hotkey.emergency_stop}")
+            logger.info(f"  紧急停止: {fisher_config.hotkey.emergency_stop}")
             
             self.is_active = True
             return True
             
         except Exception as e:
-            print(f"热键监听启动失败: {e}")
+            logger.error(f"热键监听启动失败: {e}")
             return False
     
     def stop_listening(self) -> None:
@@ -110,58 +121,58 @@ class HotkeyManager:
             keyboard.remove_hotkey(fisher_config.hotkey.emergency_stop)
             
             self.is_active = False
-            print("热键监听已停止")
+            logger.info("热键监听已停止")
             
         except Exception as e:
-            print(f"停止热键监听失败: {e}")
+            logger.error(f"停止热键监听失败: {e}")
     
     def _on_toggle_fishing(self) -> None:
         """切换钓鱼状态热键处理"""
-        print(f"热键触发: 切换钓鱼状态 ({fisher_config.hotkey.start_fishing})")
+        logger.info(f"热键触发: 切换钓鱼状态 ({fisher_config.hotkey.start_fishing})")
         
         if self.fishing_active:
             # 当前是激活状态，执行停止
-            print("当前钓鱼激活，执行停止操作")
+            logger.info("当前钓鱼激活，执行停止操作")
             if self.stop_callback:
                 try:
                     self.stop_callback()
                 except Exception as e:
-                    print(f"停止钓鱼失败: {e}")
+                    logger.error(f"停止钓鱼失败: {e}")
         else:
             # 当前是停止状态，执行开始
-            print("当前钓鱼停止，执行开始操作")
+            logger.info("当前钓鱼停止，执行开始操作")
             if self.start_callback:
                 try:
                     self.start_callback()
                 except Exception as e:
-                    print(f"开始钓鱼失败: {e}")
+                    logger.error(f"开始钓鱼失败: {e}")
     
     def _on_start_fishing(self) -> None:
         """开始钓鱼热键处理"""
-        print(f"热键触发: 开始钓鱼 ({fisher_config.hotkey.start_fishing})")
+        logger.info(f"热键触发: 开始钓鱼 ({fisher_config.hotkey.start_fishing})")
         if self.start_callback:
             try:
                 self.start_callback()
             except Exception as e:
-                print(f"开始钓鱼回调失败: {e}")
+                logger.error(f"开始钓鱼回调失败: {e}")
     
     def _on_stop_fishing(self) -> None:
         """停止钓鱼热键处理"""
-        print(f"热键触发: 停止钓鱼 ({fisher_config.hotkey.stop_fishing})")
+        logger.info(f"热键触发: 停止钓鱼 ({fisher_config.hotkey.stop_fishing})")
         if self.stop_callback:
             try:
                 self.stop_callback()
             except Exception as e:
-                print(f"停止钓鱼回调失败: {e}")
+                logger.error(f"停止钓鱼回调失败: {e}")
     
     def _on_emergency_stop(self) -> None:
         """紧急停止热键处理"""
-        print(f"热键触发: 紧急停止 ({fisher_config.hotkey.emergency_stop})")
+        logger.warning(f"热键触发: 紧急停止 ({fisher_config.hotkey.emergency_stop})")
         if self.emergency_callback:
             try:
                 self.emergency_callback()
             except Exception as e:
-                print(f"紧急停止回调失败: {e}")
+                logger.error(f"紧急停止回调失败: {e}")
     
     def update_hotkeys(self) -> bool:
         """
@@ -178,7 +189,7 @@ class HotkeyManager:
     
     def cleanup(self) -> None:
         """清理资源"""
-        print("清理热键管理器资源")
+        logger.info("清理热键管理器资源")
         self.stop_listening()
 
 # 全局热键管理器实例

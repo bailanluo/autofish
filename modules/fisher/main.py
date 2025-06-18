@@ -1,84 +1,90 @@
 """
-Fisher钓鱼模块主程序入口
-智能钓鱼辅助工具的核心模块
+Fisher钓鱼模块主程序
+负责初始化和启动钓鱼模块
 
 作者: AutoFish Team
-版本: v1.0
+版本: v1.0.1
 创建时间: 2024-12-28
+更新时间: 2025-01-17
+修复历史: v1.0.1 - 集成统一日志系统
 """
 
 import sys
-import os
 from pathlib import Path
 
-# 添加项目根目录到路径
+# 添加项目根目录到Python路径
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from modules.fisher.ui import fisher_ui
+# 导入统一日志系统
+from modules.logger import setup_logger
+
+# 修复相对导入问题 - 使用绝对导入
 from modules.fisher.config import fisher_config
 from modules.fisher.model_detector import model_detector
-from modules.fisher.admin_utils import check_and_elevate_privileges
+from modules.fisher.ui import fisher_ui
+from modules.fisher.admin_utils import is_admin, check_and_elevate_privileges
 
+# 设置日志记录器
+logger = setup_logger('fisher_main')
 
 def check_dependencies() -> bool:
     """
-    检查依赖项是否满足
+    检查系统依赖项
     
     Returns:
-        bool: 依赖项是否满足
+        bool: 依赖项是否完整
     """
-    print("检查系统依赖...")
+    logger.info("检查系统依赖...")
     
     # 检查关键路径
-    if not fisher_config.validate_paths():
-        print("关键路径验证失败")
+    model_path = fisher_config.get_model_path()
+    if not Path(model_path).exists():
+        logger.error("关键路径验证失败")
         return False
     
-    # 检查模型初始化
+    # 检查模型检测器初始化状态
     if not model_detector.is_initialized:
-        print("模型检测器初始化失败")
+        logger.error("模型检测器初始化失败")
         return False
     
-    print("系统依赖检查通过")
+    logger.info("系统依赖检查通过")
     return True
-
 
 def main():
     """主函数"""
-    print("=" * 50)
-    print("Fisher钓鱼模块 v1.0.12")
-    print("智能钓鱼辅助工具")
-    print("=" * 50)
-    
     try:
-        # 首先检查管理员权限
-        print("检查管理员权限...")
+        logger.info("=" * 50)
+        logger.info("Fisher钓鱼模块 v1.0.13")
+        logger.info("智能钓鱼辅助工具")
+        logger.info("=" * 50)
+        
+        # 检查管理员权限
+        logger.info("检查管理员权限...")
         if not check_and_elevate_privileges():
-            # 如果返回False，说明正在以管理员身份重新启动，当前进程应该退出
+            logger.warning("未获得管理员权限，程序可能无法正常工作")
+            input("按回车键继续...")
             return
         
         # 检查依赖项
         if not check_dependencies():
-            print("依赖项检查失败，请检查配置")
-            input("按任意键退出...")
+            logger.error("依赖项检查失败，请检查配置")
+            input("按回车键退出...")
             return
         
-        print("启动Fisher钓鱼模块...")
-        
+        logger.info("启动Fisher钓鱼模块...")
         # 启动UI界面
         fisher_ui.run()
         
     except KeyboardInterrupt:
-        print("\n用户中断程序")
+        logger.info("\n用户中断程序")
     except Exception as e:
-        print(f"程序运行异常: {e}")
+        logger.error(f"程序运行异常: {e}")
         import traceback
         traceback.print_exc()
-    
+        input("按回车键退出...")
     finally:
-        print("Fisher钓鱼模块已退出")
-
+        logger.info("Fisher钓鱼模块已退出")
 
 if __name__ == "__main__":
     main() 

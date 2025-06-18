@@ -396,7 +396,7 @@ class FisherUI:
     
     def _append_status(self, message: str) -> None:
         """
-        添加状态信息到文本框
+        添加状态信息到文本框，自动管理行数避免内存累积
         
         Args:
             message: 状态信息
@@ -405,6 +405,19 @@ class FisherUI:
             return
         
         self.status_text.config(state=tk.NORMAL)
+        
+        # 检查行数，超过限制则删除旧行，防止内存无限增长
+        try:
+            lines = int(self.status_text.index('end-1c').split('.')[0])
+            max_lines = 1000  # 最大保留行数
+            
+            if lines > max_lines:
+                # 删除前面的行，保留最新的800行
+                delete_lines = lines - 800
+                self.status_text.delete('1.0', f'{delete_lines}.0')
+                print(f"[UI] 清理了{delete_lines}行旧状态信息，当前行数:{lines-delete_lines}")
+        except Exception as e:
+            print(f"[UI] 清理文本行时出错: {e}")
         
         # 添加时间戳
         import datetime

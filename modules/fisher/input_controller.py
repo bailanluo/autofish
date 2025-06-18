@@ -3,8 +3,10 @@ Fisher钓鱼模块输入控制器
 负责鼠标点击和键盘按键操作，支持多线程安全操作
 
 作者: AutoFish Team
-版本: v1.0
+版本: v1.0.1
 创建时间: 2024-12-28
+更新时间: 2025-01-17
+修复历史: v1.0.1 - 集成统一日志系统
 """
 
 import time
@@ -14,8 +16,16 @@ from typing import Optional
 import pyautogui
 import keyboard
 
+# 导入统一日志系统
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+from logger import setup_logger
+
 from .config import fisher_config
 
+# 设置日志记录器
+logger = setup_logger('fisher_input')
 
 class InputController:
     """输入控制器"""
@@ -39,14 +49,14 @@ class InputController:
         pyautogui.FAILSAFE = True  # 启用失效保护
         pyautogui.PAUSE = 0.01  # 设置操作间隔
         
-        print("输入控制器初始化完成")
+        logger.info("输入控制器初始化完成")
     
     def _click_worker(self) -> None:
         """
         鼠标点击工作线程
         持续执行鼠标点击，直到收到停止信号
         """
-        print("鼠标点击线程启动")
+        logger.info("鼠标点击线程启动")
         
         while not self.stop_clicking_event.is_set():
             # 等待点击信号
@@ -85,17 +95,17 @@ class InputController:
                         self._click_count = 1
                         
                     if self._click_count % 100 == 0:
-                        print(f"🖱️  点击统计: 按下{press_time:.3f}s, 弹起等待{release_time:.3f}s, 间隔{click_interval:.3f}s")
+                        logger.debug(f"🖱️  点击统计: 按下{press_time:.3f}s, 弹起等待{release_time:.3f}s, 间隔{click_interval:.3f}s")
                     
                 except Exception as e:
-                    print(f"鼠标点击失败: {e}")
+                    logger.error(f"鼠标点击失败: {e}")
                     break
             
             # 检查是否暂停点击
             if not self.click_running.is_set():
                 self.click_event.clear()
         
-        print("鼠标点击线程结束")
+        logger.info("鼠标点击线程结束")
     
     def start_clicking(self) -> bool:
         """
@@ -106,7 +116,7 @@ class InputController:
         """
         try:
             if self.click_thread and self.click_thread.is_alive():
-                print("点击线程已在运行")
+                logger.info("点击线程已在运行")
                 return True
             
             # 重置停止信号
@@ -120,27 +130,27 @@ class InputController:
             self.click_running.set()
             self.click_event.set()
             
-            print("快速点击已启动")
+            logger.info("快速点击已启动")
             return True
             
         except Exception as e:
-            print(f"启动点击失败: {e}")
+            logger.error(f"启动点击失败: {e}")
             return False
     
     def pause_clicking(self) -> None:
         """暂停点击"""
         self.click_running.clear()
         self.click_event.clear()
-        print("鼠标点击已暂停")
+        logger.info("鼠标点击已暂停")
     
     def resume_clicking(self) -> None:
         """恢复点击"""
         if self.click_thread and self.click_thread.is_alive():
             self.click_running.set()
             self.click_event.set()
-            print("鼠标点击已恢复")
+            logger.info("鼠标点击已恢复")
         else:
-            print("点击线程未运行，尝试重新启动")
+            logger.info("点击线程未运行，尝试重新启动")
             self.start_clicking()
     
     def stop_clicking(self) -> None:
@@ -155,10 +165,10 @@ class InputController:
             if self.click_thread and self.click_thread.is_alive():
                 self.click_thread.join(timeout=2.0)
             
-            print("快速点击已停止")
+            logger.info("快速点击已停止")
             
         except Exception as e:
-            print(f"停止点击失败: {e}")
+            logger.error(f"停止点击失败: {e}")
     
     def is_clicking(self) -> bool:
         """
@@ -191,11 +201,11 @@ class InputController:
             time.sleep(duration)
             keyboard.release(key)
             
-            print(f"按键 '{key}' 持续 {duration:.2f}秒")
+            logger.info(f"按键 '{key}' 持续 {duration:.2f}秒")
             return True
             
         except Exception as e:
-            print(f"按键 '{key}' 失败: {e}")
+            logger.error(f"按键 '{key}' 失败: {e}")
             return False
     
     def press_key_threaded(self, key: str, duration: Optional[float] = None) -> bool:
@@ -219,7 +229,7 @@ class InputController:
             return True
             
         except Exception as e:
-            print(f"启动按键线程失败: {e}")
+            logger.error(f"启动按键线程失败: {e}")
             return False
     
     def left_click(self, x: Optional[int] = None, y: Optional[int] = None) -> bool:
@@ -239,11 +249,11 @@ class InputController:
             else:
                 pyautogui.click(button='left')
             
-            print(f"鼠标左键点击 ({x}, {y})")
+            logger.info(f"鼠标左键点击 ({x}, {y})")
             return True
             
         except Exception as e:
-            print(f"鼠标点击失败: {e}")
+            logger.error(f"鼠标点击失败: {e}")
             return False
     
     def left_click_hold(self, duration: Optional[float] = None) -> bool:
@@ -265,11 +275,11 @@ class InputController:
             time.sleep(duration)
             pyautogui.mouseUp(button='left')
             
-            print(f"鼠标左键长按 {duration:.2f}秒")
+            logger.info(f"鼠标左键长按 {duration:.2f}秒")
             return True
             
         except Exception as e:
-            print(f"鼠标长按失败: {e}")
+            logger.error(f"鼠标长按失败: {e}")
             return False
     
     def handle_direction_key(self, direction_state: int) -> bool:
@@ -284,7 +294,7 @@ class InputController:
         Returns:
             bool: 总是返回False（已废弃）
         """
-        print(f"handle_direction_key已废弃，状态{direction_state}不再支持")
+        logger.warning(f"handle_direction_key已废弃，状态{direction_state}不再支持")
         return False
     
     def handle_success_key(self) -> bool:
@@ -317,7 +327,7 @@ class InputController:
             return self.handle_success_key()
             
         except Exception as e:
-            print(f"处理成功状态失败: {e}")
+            logger.error(f"处理成功状态失败: {e}")
             return False
     
     def cast_rod(self) -> bool:
@@ -327,7 +337,7 @@ class InputController:
         Returns:
             bool: 是否成功抛竿
         """
-        print("执行抛竿操作")
+        logger.info("执行抛竿操作")
         return self.left_click_hold()
     
     def get_input_status(self) -> dict:
@@ -346,7 +356,7 @@ class InputController:
     
     def emergency_stop(self) -> None:
         """紧急停止所有输入操作"""
-        print("紧急停止所有输入操作")
+        logger.warning("紧急停止所有输入操作")
         
         # 停止鼠标点击
         self.stop_clicking()
@@ -367,7 +377,7 @@ class InputController:
     
     def cleanup(self) -> None:
         """清理资源"""
-        print("清理输入控制器资源")
+        logger.info("清理输入控制器资源")
         self.emergency_stop()
 
 # 全局输入控制器实例
