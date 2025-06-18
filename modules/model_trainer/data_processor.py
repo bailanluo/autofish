@@ -53,33 +53,92 @@ class DataProcessor:
     
     def _build_class_mapping(self) -> Dict[str, int]:
         """
-        动态构建类别映射 - 从data/raw/images/下的文件夹名称获取
+        动态构建类别映射 - 从data/raw/labels/下的文件夹和标注文件获取
+        
+        逻辑：
+        1. 获取data/raw/labels下的文件夹，每个文件夹代表一个类别
+        2. 文件夹名称就是类别名称
+        3. 获取文件夹内第一个标注文件的第一个ID作为该类别的ID
         
         Returns:
             Dict[str, int]: 类别名称到ID的映射
         """
         class_mapping = {}
         
-        if not self.raw_images_dir.exists():
-            logger.warning(f"图片数据目录不存在: {self.raw_images_dir}")
+        if not self.raw_labels_dir.exists():
+            logger.warning(f"标注数据目录不存在: {self.raw_labels_dir}")
             return class_mapping
         
-        # 获取所有子目录名称作为类别
-        class_dirs = [d for d in self.raw_images_dir.iterdir() if d.is_dir()]
+        # 获取所有标注文件夹（每个文件夹代表一个类别）
+        class_dirs = [d for d in self.raw_labels_dir.iterdir() if d.is_dir()]
+        
+        if not class_dirs:
+            logger.warning("未找到任何类别目录")
+            return class_mapping
         
         # 按名称排序确保一致性
         class_dirs.sort(key=lambda x: x.name)
         
-        # 创建映射
-        for idx, class_dir in enumerate(class_dirs):
+        logger.info(f"发现 {len(class_dirs)} 个类别目录")
+        
+        # 从每个类别目录的标注文件中提取类别ID
+        for class_dir in class_dirs:
             class_name = class_dir.name
-            class_mapping[class_name] = idx
-            logger.debug(f"类别映射: {class_name} -> {idx}")
+            
+            # 获取该类别目录下的第一个标注文件
+            label_files = list(class_dir.glob('*.txt'))
+            
+            if not label_files:
+                logger.warning(f"类别 '{class_name}' 目录下没有找到标注文件，跳过")
+                continue
+            
+            # 使用第一个标注文件
+            first_label_file = label_files[0]
+            
+            try:
+                with open(first_label_file, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                
+                # 获取第一行的第一个ID
+                class_id = None
+                for line in lines:
+                    line = line.strip()
+                    if line:  # 跳过空行
+                        parts = line.split()
+                        if len(parts) >= 5:  # YOLO格式：class_id x y w h
+                            try:
+                                class_id = int(parts[0])
+                                break  # 获取第一个ID后立即退出
+                            except ValueError:
+                                logger.warning(f"标注文件 {first_label_file} 中类别ID格式错误: {parts[0]}")
+                                continue
+                
+                if class_id is not None:
+                    # 检查是否有重复的类别ID
+                    if class_id in class_mapping.values():
+                        existing_class = [k for k, v in class_mapping.items() if v == class_id][0]
+                        logger.error(f"类别ID冲突: '{class_name}' 和 '{existing_class}' 都使用ID {class_id}")
+                        logger.error(f"请检查标注文件确保每个类别使用唯一的ID")
+                        continue
+                    
+                    class_mapping[class_name] = class_id
+                    logger.info(f"类别映射: '{class_name}' -> ID {class_id}")
+                else:
+                    logger.warning(f"类别 '{class_name}' 的标注文件中没有找到有效的类别ID")
+                    
+            except Exception as e:
+                logger.error(f"读取类别 '{class_name}' 的标注文件失败: {str(e)}")
+                continue
         
         if not class_mapping:
-            logger.warning("未找到任何类别目录")
+            logger.warning("未能构建任何类别映射")
         else:
             logger.info(f"构建类别映射完成: {len(class_mapping)} 个类别")
+            # 按类别ID排序显示最终映射结果
+            sorted_mapping = dict(sorted(class_mapping.items(), key=lambda x: x[1]))
+            logger.info("最终类别映射:")
+            for class_name, class_id in sorted_mapping.items():
+                logger.info(f"  ID {class_id}: {class_name}")
         
         return class_mapping
     
@@ -160,9 +219,11 @@ class DataProcessor:
                 image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']
                 image_count = 0
                 
+                # 使用case-insensitive匹配，避免重复计算
                 for ext in image_extensions:
-                    image_count += len(list(class_dir.glob(f'*{ext}')))
-                    image_count += len(list(class_dir.glob(f'*{ext.upper()}')))
+                    # 在Windows上，glob默认不区分大小写，只需要搜索一次
+                    pattern_files = list(class_dir.glob(f'*{ext}'))
+                    image_count += len(pattern_files)
                 
                 class_counts[class_name] = image_count
                 total_images += image_count
@@ -299,8 +360,8 @@ class DataProcessor:
             
             logger.info("开始准备分类训练数据...")
             
-            # 创建分类数据目录结构
-            self._create_classification_directories()
+            # 创建分类数据目录结构（默认清理历史数据）
+            self._create_classification_directories(clean_first=True)
             
             # 扫描原始数据
             class_counts = self.scan_data()
@@ -381,8 +442,24 @@ class DataProcessor:
         
         return False
     
-    def _create_detection_directories(self):
-        """创建检测数据目录结构"""
+    def _create_detection_directories(self, clean_first: bool = True):
+        """
+        创建检测数据目录结构
+        
+        Args:
+            clean_first: 是否先清空目录避免历史数据污染
+        """
+        if clean_first:
+            # 先清空训练和验证目录，避免历史数据污染
+            logger.info("清理历史训练数据，避免数据污染...")
+            directories_to_clean = [self.train_dir, self.val_dir]
+            
+            for directory in directories_to_clean:
+                if directory.exists():
+                    shutil.rmtree(directory)
+                    logger.info(f"已清理目录: {directory}")
+        
+        # 创建新的目录结构
         directories = [
             self.train_dir / "images",
             self.train_dir / "labels", 
@@ -393,9 +470,26 @@ class DataProcessor:
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
             logger.debug(f"创建目录: {directory}")
+        
+        logger.info("训练数据目录结构创建完成")
     
-    def _create_classification_directories(self):
-        """创建分类数据目录结构"""
+    def _create_classification_directories(self, clean_first: bool = True):
+        """
+        创建分类数据目录结构
+        
+        Args:
+            clean_first: 是否先清空目录避免历史数据污染
+        """
+        if clean_first:
+            # 先清空训练和验证目录，避免历史数据污染
+            logger.info("清理历史分类数据，避免数据污染...")
+            directories_to_clean = [self.train_dir, self.val_dir]
+            
+            for directory in directories_to_clean:
+                if directory.exists():
+                    shutil.rmtree(directory)
+                    logger.info(f"已清理目录: {directory}")
+        
         # 为训练集和验证集创建类别子目录
         for split in ['train', 'val']:
             split_dir = self.data_root / split
@@ -405,6 +499,8 @@ class DataProcessor:
                 class_dir = split_dir / class_name
                 class_dir.mkdir(parents=True, exist_ok=True)
                 logger.debug(f"创建目录: {class_dir}")
+        
+        logger.info("分类数据目录结构创建完成")
     
     def _get_class_images(self, class_name: str) -> List[Path]:
         """获取指定类别的所有图片文件（保持向后兼容）"""
@@ -416,8 +512,8 @@ class DataProcessor:
         image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']
         
         for ext in image_extensions:
+            # 修复：避免重复计算，Windows上glob不区分大小写
             image_files.extend(list(class_dir.glob(f'*{ext}')))
-            image_files.extend(list(class_dir.glob(f'*{ext.upper()}')))
         
         return image_files
     
@@ -437,15 +533,15 @@ class DataProcessor:
         if image_dir.exists():
             image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']
             for ext in image_extensions:
+                # 修复：避免重复计算，Windows上glob不区分大小写
                 image_files.extend(list(image_dir.glob(f'*{ext}')))
-                image_files.extend(list(image_dir.glob(f'*{ext.upper()}')))
         
         # 获取标注文件
         label_dir = self.raw_labels_dir / class_name
         label_files = []
         if label_dir.exists():
+            # 修复：避免重复计算，Windows上glob不区分大小写
             label_files.extend(list(label_dir.glob('*.txt')))
-            label_files.extend(list(label_dir.glob('*.TXT')))
         
         logger.debug(f"类别 {class_name}: {len(image_files)} 图片, {len(label_files)} 标注")
         return image_files, label_files
@@ -650,7 +746,7 @@ class DataProcessor:
     
     def _copy_and_fix_label_file(self, source_label: Path, target_label: Path, class_name: str) -> bool:
         """
-        复制标注文件并修正其中的类别ID，确保与我们的映射一致
+        复制标注文件，保持原有的类别ID（因为映射是从标注文件中读取的）
         
         Args:
             source_label: 源标注文件路径
@@ -665,19 +761,19 @@ class DataProcessor:
                 logger.error(f"未知类别: {class_name}")
                 return False
             
-            # 获取正确的类别ID
-            correct_class_id = self.class_mapping[class_name]
+            # 获取该类别的预期ID（从映射表中获取）
+            expected_class_id = self.class_mapping[class_name]
             
             # 读取源标注文件
             with open(source_label, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
             
-            # 处理每一行，修正类别ID
-            fixed_lines = []
+            # 验证并复制标注文件，确保类别ID一致
+            processed_lines = []
             for line_num, line in enumerate(lines, 1):
                 line = line.strip()
                 if not line:
-                    fixed_lines.append(line + '\n')
+                    processed_lines.append(line + '\n')
                     continue
                 
                 parts = line.split()
@@ -690,21 +786,26 @@ class DataProcessor:
                     original_class_id = int(parts[0])
                     x, y, w, h = parts[1:5]
                     
-                    # 使用正确的类别ID替换原始ID
-                    fixed_line = f"{correct_class_id} {x} {y} {w} {h}\n"
-                    fixed_lines.append(fixed_line)
-                    
-                    # 如果类别ID发生了变化，记录日志
-                    if original_class_id != correct_class_id:
-                        logger.debug(f"修正类别ID: {original_class_id} -> {correct_class_id} ({class_name})")
+                    # 验证类别ID是否与映射表一致
+                    if original_class_id != expected_class_id:
+                        logger.warning(f"标注文件 {source_label} 第{line_num}行类别ID不一致: "
+                                     f"映射表中 '{class_name}' 对应ID {expected_class_id}, "
+                                     f"但标注文件中为 {original_class_id}")
+                        # 使用映射表中的ID进行修正
+                        corrected_line = f"{expected_class_id} {x} {y} {w} {h}\n"
+                        processed_lines.append(corrected_line)
+                        logger.debug(f"修正类别ID: {original_class_id} -> {expected_class_id}")
+                    else:
+                        # 类别ID一致，直接使用原始行
+                        processed_lines.append(line + '\n')
                         
                 except ValueError as e:
                     logger.warning(f"标注文件 {source_label} 第{line_num}行数值格式错误: {e}")
                     continue
             
-            # 写入修正后的标注文件
+            # 写入处理后的标注文件
             with open(target_label, 'w', encoding='utf-8') as f:
-                f.writelines(fixed_lines)
+                f.writelines(processed_lines)
             
             return True
             
@@ -779,18 +880,24 @@ class DataProcessor:
     def _create_detection_config(self):
         """创建检测训练配置文件 - 确保YOLO使用我们指定的类别映射"""
         
-        # 确保names是按照ID顺序排列的列表，而不是字典
-        # 这样YOLO就会严格按照我们的顺序使用类别
-        names_list = []
-        chinese_names_list = []
+        # 获取排序后的类别ID列表
+        sorted_class_ids = sorted(self.class_mapping.values())
         
-        # 按照class_id顺序构建列表
-        for class_id in sorted(self.class_mapping.values()):
-            names_list.append(self.class_names[class_id])
+        # 构建YOLO需要的names列表（按类别ID顺序）
+        names_list = []
+        chinese_names_dict = {}  # 使用实际类别ID作为键
+        english_names_dict = {}  # 使用实际类别ID作为键
+        
+        # 按照实际类别ID顺序构建
+        for class_id in sorted_class_ids:
+            english_name = self.class_names[class_id]
+            names_list.append(english_name)
+            english_names_dict[class_id] = english_name
+            
             # 找到对应的中文名称
             for chinese_name, cid in self.class_mapping.items():
                 if cid == class_id:
-                    chinese_names_list.append(chinese_name)
+                    chinese_names_dict[class_id] = chinese_name
                     break
         
         config = {
@@ -798,42 +905,60 @@ class DataProcessor:
             'train': 'train/images',
             'val': 'val/images',
             'nc': len(self.class_mapping),
-            'names': names_list  # 使用列表而不是字典，确保顺序
+            'names': names_list  # YOLO需要的连续列表
         }
         
-        # 添加详细的类别信息用于调试和记录
+        # 添加详细的类别信息用于调试和记录（使用实际类别ID）
         config['class_details'] = {
-            'chinese_names': {i: chinese_names_list[i] for i in range(len(chinese_names_list))},
-            'english_names': {i: names_list[i] for i in range(len(names_list))},
-            'class_mapping': self.class_mapping,
-            'total_classes': len(self.class_mapping)
+            'chinese_names': chinese_names_dict,  # 实际ID -> 中文名
+            'english_names': english_names_dict,  # 实际ID -> 英文名
+            'class_mapping': self.class_mapping,  # 中文名 -> 实际ID
+            'total_classes': len(self.class_mapping),
+            'sorted_class_ids': sorted_class_ids  # 排序后的实际ID列表
         }
         
-        # 创建两个配置文件，保持兼容性
+        # 只创建主配置文件
         config_files = [
-            self.data_root / "train_config.yaml",  # 主要配置文件
-            self.data_root / "train_simple.yaml"   # 保持向后兼容
+            self.data_root / "train_config.yaml"   # 主要配置文件
         ]
         
         for config_file in config_files:
-            with open(config_file, 'w', encoding='utf-8') as f:
-                yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
-            logger.info(f"检测配置文件已创建: {config_file}")
+            try:
+                with open(config_file, 'w', encoding='utf-8') as f:
+                    yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+                logger.info(f"检测配置文件已创建: {config_file}")
+            except NameError:
+                # 如果yaml模块不可用，使用简单的文本格式
+                with open(config_file, 'w', encoding='utf-8') as f:
+                    f.write(f"# YOLO训练配置文件\n")
+                    f.write(f"path: {config['path']}\n")
+                    f.write(f"train: {config['train']}\n") 
+                    f.write(f"val: {config['val']}\n")
+                    f.write(f"nc: {config['nc']}\n")
+                    f.write(f"names: {config['names']}\n")
+                    f.write(f"\n# 详细类别信息\n")
+                    for i, name in enumerate(names_list):
+                        f.write(f"# {i}: {chinese_names_list[i]} -> {name}\n")
+                logger.info(f"检测配置文件已创建(简化格式): {config_file}")
             
-        # 额外创建一个类别映射文件用于记录
+        # 额外创建一个类别映射文件用于记录（使用实际类别ID）
         mapping_file = self.data_root / "class_mapping.txt"
         with open(mapping_file, 'w', encoding='utf-8') as f:
             f.write("# 类别映射表 (自动生成 - 确保与YOLO训练一致)\n")
-            f.write("# 格式: ID: 中文名称 -> 英文名称\n")
-            f.write("# 注意: 此映射表与YOLO训练时使用的映射完全一致\n\n")
-            for i in range(len(names_list)):
-                f.write(f"{i}: {chinese_names_list[i]} -> {names_list[i]}\n")
+            f.write("# 格式: 实际ID: 中文名称 -> 英文名称\n")
+            f.write("# 注意: 此映射表使用原始标注文件中的实际类别ID\n\n")
+            for class_id in sorted_class_ids:
+                chinese_name = chinese_names_dict[class_id]
+                english_name = english_names_dict[class_id]
+                f.write(f"{class_id}: {chinese_name} -> {english_name}\n")
         logger.info(f"类别映射文件已创建: {mapping_file}")
         
-        # 输出映射信息到日志
+        # 输出映射信息到日志（使用实际类别ID）
         logger.info("类别映射确认:")
-        for i in range(len(names_list)):
-            logger.info(f"  {i}: {chinese_names_list[i]} -> {names_list[i]}")
+        for class_id in sorted_class_ids:
+            chinese_name = chinese_names_dict[class_id]
+            english_name = english_names_dict[class_id]
+            logger.info(f"  实际ID {class_id}: {chinese_name} -> {english_name}")
     
     def _create_classification_config(self):
         """创建分类训练配置文件"""
@@ -867,7 +992,6 @@ class DataProcessor:
             
             # 删除配置文件
             config_files = [
-                self.data_root / "train_simple.yaml",
                 self.data_root / "classification_config.yaml"
             ]
             

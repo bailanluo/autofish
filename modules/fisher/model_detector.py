@@ -13,9 +13,13 @@ import numpy as np
 from typing import Optional, Tuple, List, Dict
 from pathlib import Path
 import mss
+import logging
 from ultralytics import YOLO
 
 from .config import fisher_config
+
+# 禁用ultralytics的详细日志输出
+logging.getLogger('ultralytics').setLevel(logging.WARNING)
 
 
 class ModelDetector:
@@ -54,8 +58,8 @@ class ModelDetector:
             self.device = self._get_device()
             print(f"使用计算设备: {self.device}")
             
-            # 加载模型
-            self.model = YOLO(model_path)
+            # 加载模型（禁用详细日志）
+            self.model = YOLO(model_path, verbose=False)
             self.model.to(self.device)
             
             print(f"模型加载成功: {model_path}")
@@ -164,8 +168,8 @@ class ModelDetector:
                 if image is None:
                     return None
             
-            # 模型推理
-            results = self.model(image, conf=fisher_config.model.confidence_threshold)
+            # 模型推理（禁用详细日志输出）
+            results = self.model(image, conf=fisher_config.model.confidence_threshold, verbose=False)
             
             # 解析结果
             if len(results) > 0 and len(results[0].boxes) > 0:

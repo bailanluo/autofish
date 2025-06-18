@@ -14,7 +14,6 @@ ROOT_DIR = Path(__file__).parent.parent.parent
 sys.path.append(str(ROOT_DIR))
 
 from modules.logger import setup_logger, LogContext
-from modules.config_manager import ConfigManager
 
 # 获取logger
 logger = logging.getLogger(__name__)

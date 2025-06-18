@@ -15,7 +15,6 @@ from typing import Optional, Dict, Any
 from .config import fisher_config
 from .fishing_controller import fishing_controller, FishingStatus, FishingState
 from .model_detector import model_detector
-from .ocr_detector import ocr_detector
 
 
 class StatusWindow:
@@ -199,10 +198,8 @@ class SettingsDialog:
         model_status = "已加载" if model_info['initialized'] else "未加载"
         ttk.Label(info_group, text=f"模型状态: {model_status}").pack(anchor=tk.W)
         
-        # OCR信息
-        ocr_info = ocr_detector.get_ocr_info()
-        ocr_status = "已初始化" if ocr_info['initialized'] else "未初始化"
-        ttk.Label(info_group, text=f"OCR状态: {ocr_status}").pack(anchor=tk.W)
+        # 版本信息
+        ttk.Label(info_group, text=f"版本: v1.0.9").pack(anchor=tk.W)
         
         # 按钮框架
         button_frame = ttk.Frame(main_frame)
@@ -232,20 +229,13 @@ class SettingsDialog:
     
     def _test_settings(self) -> None:
         """测试设置"""
-        # 测试模型和OCR状态
+        # 测试模型状态
         model_ok = model_detector.is_initialized
-        ocr_ok = ocr_detector.is_initialized
         
-        if model_ok and ocr_ok:
+        if model_ok:
             messagebox.showinfo("测试", "系统组件工作正常")
         else:
-            issues = []
-            if not model_ok:
-                issues.append("模型检测器未初始化")
-            if not ocr_ok:
-                issues.append("OCR检测器未初始化")
-            
-            messagebox.showwarning("测试", f"发现问题:\n" + "\n".join(issues))
+            messagebox.showwarning("测试", "发现问题:\n模型检测器未初始化")
     
     def _cancel(self) -> None:
         """取消设置"""
@@ -379,9 +369,8 @@ class FisherUI:
         self.status_text.config(yscrollcommand=scrollbar.set)
         
         # 初始状态信息
-        self._append_status("Fisher钓鱼模块已启动")
+        self._append_status("Fisher钓鱼模块已启动 v1.0.9")
         self._append_status(f"模型状态: {'已加载' if model_detector.is_initialized else '未加载'}")
-        self._append_status(f"OCR状态: {'已初始化' if ocr_detector.is_initialized else '未初始化'}")
         self._append_status("点击'开始钓鱼'开始自动钓鱼")
     
     def _append_status(self, message: str) -> None:

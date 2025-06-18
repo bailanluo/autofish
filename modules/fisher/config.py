@@ -33,12 +33,25 @@ class OCRConfig:
 class TimingConfig:
     """时间配置类"""
     initial_timeout: int = 180  # 初始状态超时时间(秒) - 3分钟
-    click_delay_min: float = 0.054  # 鼠标点击最小间隔(秒)
-    click_delay_max: float = 0.127  # 鼠标点击最大间隔(秒)
+    
+    # 新版鼠标点击时间控制 (v1.0.10)
+    mouse_press_time_min: float = 0.08  # 鼠标按下时间最小值(秒)
+    mouse_press_time_max: float = 0.12  # 鼠标按下时间最大值(秒)
+    mouse_release_time_min: float = 0.05  # 鼠标释放后等待时间最小值(秒)
+    mouse_release_time_max: float = 0.08  # 鼠标释放后等待时间最大值(秒)
+    click_interval_min: float = 0.18  # 点击间隔最小值(秒)
+    click_interval_max: float = 0.25  # 点击间隔最大值(秒)
+    
+    # 兼容旧版配置 (保留用于其他地方)
+    click_delay_min: float = 0.054  # 鼠标点击最小间隔(秒) - 兼容性保留
+    click_delay_max: float = 0.127  # 鼠标点击最大间隔(秒) - 兼容性保留
+    
+    # 其他时间配置
     state3_pause_time: float = 1.0  # 状态3暂停时间(秒)
     success_wait_time: float = 1.5  # 钓鱼成功等待时间(秒)
     cast_hold_time: float = 2.0  # 抛竿长按时间(秒)
-    key_press_time: float = 1.0  # 按键持续时间(秒)
+    key_press_time: float = 1.5  # 按键持续时间(秒) - a/d键
+    key_pause_time: float = 0.5  # 按键暂停时间(秒) - a/d键间隔
 
 @dataclass
 class HotkeyConfig:

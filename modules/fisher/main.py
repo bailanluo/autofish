@@ -18,7 +18,6 @@ sys.path.insert(0, str(project_root))
 from modules.fisher.ui import fisher_ui
 from modules.fisher.config import fisher_config
 from modules.fisher.model_detector import model_detector
-from modules.fisher.ocr_detector import ocr_detector
 from modules.fisher.admin_utils import check_and_elevate_privileges
 
 
@@ -41,11 +40,6 @@ def check_dependencies() -> bool:
         print("模型检测器初始化失败")
         return False
     
-    # 检查OCR初始化
-    if not ocr_detector.is_initialized:
-        print("OCR检测器初始化失败")
-        return False
-    
     print("系统依赖检查通过")
     return True
 
@@ -53,7 +47,7 @@ def check_dependencies() -> bool:
 def main():
     """主函数"""
     print("=" * 50)
-    print("Fisher钓鱼模块 v1.0.1")
+    print("Fisher钓鱼模块 v1.0.11")
     print("智能钓鱼辅助工具")
     print("=" * 50)
     
@@ -62,7 +56,6 @@ def main():
         print("检查管理员权限...")
         if not check_and_elevate_privileges():
             # 如果返回False，说明正在以管理员身份重新启动，当前进程应该退出
-            input("按任意键退出当前窗口...")
             return
         
         # 检查依赖项

@@ -53,19 +53,39 @@ class InputController:
             if self.click_event.wait(timeout=0.1):
                 # 执行点击
                 try:
-                    # 生成随机点击间隔
-                    delay = random.uniform(
-                        fisher_config.timing.click_delay_min,
-                        fisher_config.timing.click_delay_max
+                    # 生成随机时间参数
+                    press_time = random.uniform(
+                        fisher_config.timing.mouse_press_time_min,
+                        fisher_config.timing.mouse_press_time_max
+                    )
+                    release_time = random.uniform(
+                        fisher_config.timing.mouse_release_time_min,
+                        fisher_config.timing.mouse_release_time_max
+                    )
+                    click_interval = random.uniform(
+                        fisher_config.timing.click_interval_min,
+                        fisher_config.timing.click_interval_max
                     )
                     
                     # 鼠标左键按下
                     pyautogui.mouseDown(button='left')
-                    time.sleep(delay)
+                    time.sleep(press_time)  # 按下持续时间
                     
                     # 鼠标左键弹起
                     pyautogui.mouseUp(button='left')
-                    time.sleep(delay)
+                    time.sleep(release_time)  # 弹起后短暂等待
+                    
+                    # 等待下次点击间隔
+                    time.sleep(click_interval)
+                    
+                    # 每100次点击输出一次时间统计（调试用）
+                    if hasattr(self, '_click_count'):
+                        self._click_count += 1
+                    else:
+                        self._click_count = 1
+                        
+                    if self._click_count % 100 == 0:
+                        print(f"🖱️  点击统计: 按下{press_time:.3f}s, 弹起等待{release_time:.3f}s, 间隔{click_interval:.3f}s")
                     
                 except Exception as e:
                     print(f"鼠标点击失败: {e}")

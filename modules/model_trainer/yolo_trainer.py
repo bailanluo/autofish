@@ -354,8 +354,10 @@ class YOLOTrainer:
         # 数据配置文件路径
         data_config = self.data_dir / "train_config.yaml"
         if not data_config.exists():
-            # 尝试使用备用配置文件
+            # 如果主配置文件不存在，尝试使用备用配置文件
             data_config = self.data_dir / "train_simple.yaml"
+            if not data_config.exists():
+                raise FileNotFoundError(f"训练配置文件不存在: train_config.yaml 或 train_simple.yaml")
         
         # 创建训练时间戳
         timestamp = int(time.time())
@@ -452,135 +454,110 @@ class YOLOTrainer:
             def on_train_epoch_end(trainer):
                 """训练轮次结束回调"""
                 try:
-                    # 使用与验证回调相同的方式获取epoch信息
+                    # 获取epoch信息
                     epoch = 0
-                    epochs = 0
+                    epochs = 100  # 默认值
                     
-                    # 方式1：直接属性
-                    if hasattr(trainer, 'epoch'):
-                        epoch = trainer.epoch
-                    elif hasattr(trainer, 'current_epoch'):
-                        epoch = trainer.current_epoch
-                    
-                    if hasattr(trainer, 'epochs'):
-                        epochs = trainer.epochs
-                    elif hasattr(trainer, 'total_epochs'):
-                        epochs = trainer.total_epochs
-                    elif hasattr(trainer, 'args') and hasattr(trainer.args, 'epochs'):
+                    # 获取总轮数
+                    if hasattr(trainer, 'args') and hasattr(trainer.args, 'epochs'):
                         epochs = trainer.args.epochs
                     
-                    # 方式2：从args获取
-                    if epoch == 0 and hasattr(trainer, 'args'):
-                        args = trainer.args
-                        if hasattr(args, 'epoch'):
-                            epoch = args.epoch
-                        if hasattr(args, 'epochs') and epochs == 0:
-                            epochs = args.epochs
-                    
-                    # 如果还是获取不到，使用默认值
-                    if epochs == 0:
-                        epochs = 100  # 默认值
+                    # 获取当前epoch
+                    if hasattr(trainer, 'epoch') and trainer.epoch is not None:
+                        epoch = trainer.epoch
+                    elif hasattr(trainer, 'current_epoch') and trainer.current_epoch is not None:
+                        epoch = trainer.current_epoch
                     
                     # 计算进度
-                    progress = ((epoch + 1) / epochs) * 100 if epochs > 0 else 0
+                    if epoch > 0 and epochs > 0:
+                        progress = ((epoch + 1) / epochs) * 100
+                        # 只在有效epoch时记录日志
+                        self.logger.info(f"轮次 {epoch + 1}/{epochs} 训练完成")
+                    else:
+                        progress = 0
+                        # 简化的日志输出
+                        self.logger.debug(f"训练轮次完成")
                     
-                    # 记录训练轮次完成
-                    self.logger.info(f"轮次 {epoch + 1}/{epochs} 训练完成")
-                    
-                    # 在训练轮次结束时，只传递基本信息，不传递验证指标
+                    # 通知UI更新进度
                     self._notify_progress({
                         'status': 'training',
-                        'epoch': epoch + 1,  # 显示从1开始的epoch
+                        'epoch': max(1, epoch + 1),
                         'total_epochs': epochs,
                         'progress': progress,
-                        'metrics': {}  # 训练阶段暂不传递指标
+                        'metrics': {}  # 训练阶段不传递验证指标
                     })
                     
                 except Exception as e:
-                    self.logger.debug(f"训练回调执行失败: {str(e)}")
-                    import traceback
-                    self.logger.debug(f"详细错误: {traceback.format_exc()}")
+                    self.logger.debug(f"训练回调失败: {str(e)}")
             
             def on_val_end(trainer):
                 """验证结束回调 - 修复epoch获取问题"""
                 try:
-                    # 尝试多种方式获取epoch信息
+                    # YOLO训练器属性获取
                     epoch = 0
-                    epochs = 0
+                    epochs = 100  # 默认值
                     
-                    # 方式1：从trainer直接获取（YOLO v8/v11的标准方式）
-                    if hasattr(trainer, 'epoch'):
-                        epoch = trainer.epoch
-                    elif hasattr(trainer, 'current_epoch'):
-                        epoch = trainer.current_epoch
-                    
-                    # 方式2：从trainer.args获取总轮数
+                    # 获取总轮数
                     if hasattr(trainer, 'args') and hasattr(trainer.args, 'epochs'):
                         epochs = trainer.args.epochs
-                    elif hasattr(trainer, 'epochs'):
-                        epochs = trainer.epochs
                     
-                    # 方式3：如果还是获取不到epoch，尝试从其他属性
-                    if epoch == 0:
-                        # 尝试从不同的可能属性获取当前epoch
-                        for attr_name in ['current_epoch', 'e', 'epoch_num']:
-                            if hasattr(trainer, attr_name):
-                                epoch = getattr(trainer, attr_name, 0)
-                                if epoch > 0:
-                                    break
+                    # 获取当前epoch - YOLO通常使用这些属性
+                    if hasattr(trainer, 'epoch') and trainer.epoch is not None:
+                        epoch = trainer.epoch
+                    elif hasattr(trainer, 'current_epoch') and trainer.current_epoch is not None:
+                        epoch = trainer.current_epoch
                     
-                    # 确保epoch和epochs的值合理
-                    if epochs == 0:
-                        epochs = 100  # 默认值
+                    # 如果还是获取不到epoch，可能是YOLO版本差异
+                    # 我们可以从训练输出中推断当前进度
+                    if epoch == 0 and hasattr(trainer, 'args'):
+                        # 在无法获取精确epoch的情况下，减少日志噪音
+                        self.logger.debug(f"验证完成 (训练进行中)")
+                    else:
+                        # 正常情况下显示详细信息
+                        self.logger.info(f"轮次 {epoch + 1}/{epochs} 验证完成")
                     
-                    # 调试信息（临时启用）
-                    self.logger.info(f"验证回调调试 - 获取到的epoch: {epoch}, epochs: {epochs}")
-                    if epoch == 0:
-                        # 如果epoch仍然是0，打印trainer的所有属性来调试
-                        trainer_attrs = [attr for attr in dir(trainer) if not attr.startswith('_')]
-                        self.logger.info(f"Trainer对象属性: {trainer_attrs[:20]}")  # 只显示前20个避免太长
+                    # 获取训练指标
+                    metrics = {}
                     
-                    # 记录验证完成
-                    self.logger.info(f"轮次 {epoch + 1}/{epochs} 验证完成")
-                    
-                    # 尝试获取基本指标（如果可用）
-                    metrics = {'map50': 0.0, 'precision': 0.0, 'recall': 0.0}
-                    
-                    # 安全地尝试获取指标
+                    # 尝试获取验证指标
                     if hasattr(trainer, 'metrics') and trainer.metrics:
                         try:
                             metrics_obj = trainer.metrics
                             
-                            # 只获取最基本的指标，避免复杂的属性访问
-                            if hasattr(metrics_obj, 'map50'):
-                                metrics['map50'] = float(getattr(metrics_obj, 'map50', 0.0))
-                            if hasattr(metrics_obj, 'precision'):
-                                metrics['precision'] = float(getattr(metrics_obj, 'precision', 0.0))
-                            if hasattr(metrics_obj, 'recall'):
-                                metrics['recall'] = float(getattr(metrics_obj, 'recall', 0.0))
+                            # 获取基本的检测指标
+                            if hasattr(metrics_obj, 'box'):
+                                box_metrics = metrics_obj.box
+                                if hasattr(box_metrics, 'map50'):
+                                    metrics['map50'] = float(box_metrics.map50)
+                                if hasattr(box_metrics, 'map'):
+                                    metrics['map50_95'] = float(box_metrics.map)
+                                if hasattr(box_metrics, 'mp'):
+                                    metrics['precision'] = float(box_metrics.mp)
+                                if hasattr(box_metrics, 'mr'):
+                                    metrics['recall'] = float(box_metrics.mr)
                             
                         except Exception:
-                            # 如果指标获取失败，使用默认值
-                            pass
+                            # 如果指标获取失败，使用空字典
+                            metrics = {}
                     
-                    # 计算进度
-                    progress = ((epoch + 1) / epochs) * 100 if epochs > 0 else 0
+                    # 计算进度百分比
+                    if epoch > 0 and epochs > 0:
+                        progress = ((epoch + 1) / epochs) * 100
+                    else:
+                        progress = 0
                     
-                    # 通知进度
+                    # 通知UI更新进度
                     self._notify_progress({
                         'status': 'validation',
-                        'epoch': epoch + 1,  # 显示从1开始的epoch
+                        'epoch': max(1, epoch + 1),  # 确保至少显示1
                         'total_epochs': epochs,
                         'progress': progress,
                         'metrics': metrics
                     })
                         
                 except Exception as e:
-                    # 简化错误处理，只记录基本信息
-                    self.logger.debug(f"验证回调执行失败: {str(e)}")
-                    # 临时启用详细错误信息用于调试
-                    import traceback
-                    self.logger.debug(f"详细错误: {traceback.format_exc()}")
+                    # 简化错误处理
+                    self.logger.debug(f"验证回调失败: {str(e)}")
             
             # 注册回调函数
             if hasattr(model, 'add_callback'):
@@ -711,7 +688,7 @@ class YOLOTrainer:
             
             model = YOLO(model_path)
             
-            # 验证数据配置路径
+            # 验证数据配置路径 - 优先使用主配置文件
             val_config = self.data_dir / "train_config.yaml"
             if not val_config.exists():
                 val_config = self.data_dir / "train_simple.yaml"
