@@ -40,16 +40,32 @@ class DataProcessor:
         self.train_dir = self.data_root / "train"
         self.val_dir = self.data_root / "val"
         
-        # 动态获取类别映射 - 从实际文件夹结构中获取
-        self.class_mapping = self._build_class_mapping()
+        # 动态获取原始类别映射 - 从实际文件夹结构中获取
+        self.original_class_mapping = self._build_class_mapping()
         
-        # 英文类别名称映射 - 动态生成
+        # 检查并修正类别ID连续性
+        self.class_mapping, self.id_mapping = self._ensure_continuous_class_ids(self.original_class_mapping)
+        
+        # 英文类别名称映射 - 基于修正后的映射生成
         self.class_names = self._build_english_class_names()
         
         logger.info("数据处理器初始化完成")
         logger.info(f"数据源路径: {self.raw_images_dir}")
         logger.info(f"标注文件路径: {self.raw_labels_dir}")
         logger.info(f"发现 {len(self.class_mapping)} 个类别: {list(self.class_mapping.keys())}")
+        
+        # 显示ID映射关系（如果有修正）
+        if self.id_mapping:
+            has_changes = any(orig != yolo for orig, yolo in self.id_mapping.items())
+            if has_changes:
+                logger.info("类别ID连续性修正:")
+                for original_id, yolo_id in sorted(self.id_mapping.items()):
+                    if original_id != yolo_id:
+                        logger.info(f"  原始ID {original_id} -> YOLO连续ID {yolo_id}")
+                    else:
+                        logger.debug(f"  ID {original_id} 保持不变")
+            else:
+                logger.info("类别ID已经是连续的，无需修正")
     
     def _build_class_mapping(self) -> Dict[str, int]:
         """
@@ -141,6 +157,65 @@ class DataProcessor:
                 logger.info(f"  ID {class_id}: {class_name}")
         
         return class_mapping
+    
+    def _ensure_continuous_class_ids(self, original_mapping: Dict[str, int]) -> tuple[Dict[str, int], Dict[int, int]]:
+        """
+        确保类别ID连续，修正不连续的ID
+        
+        Args:
+            original_mapping: 原始类别映射 {类别名: 原始ID}
+            
+        Returns:
+            tuple: (修正后的类别映射, ID映射关系)
+                - 修正后的类别映射: {类别名: YOLO连续ID}
+                - ID映射关系: {原始ID: YOLO连续ID}
+        """
+        if not original_mapping:
+            return {}, {}
+        
+        # 获取所有原始ID并排序
+        original_ids = sorted(original_mapping.values())
+        logger.info(f"原始类别ID序列: {original_ids}")
+        
+        # 检查连续性
+        expected_ids = list(range(len(original_ids)))  # [0, 1, 2, 3, 4, ...]
+        logger.info(f"YOLO期望连续ID: {expected_ids}")
+        
+        # 建立原始ID到连续ID的映射
+        id_mapping = {}
+        for i, original_id in enumerate(original_ids):
+            id_mapping[original_id] = i  # 原始ID -> 连续序号
+        
+        # 检查是否需要修正
+        needs_fix = original_ids != expected_ids
+        if needs_fix:
+            logger.warning("检测到类别ID不连续，将进行修正:")
+            logger.warning(f"原始ID: {original_ids}")
+            logger.warning(f"修正为: {expected_ids}")
+            
+            # 显示具体的映射关系
+            for original_id, yolo_id in id_mapping.items():
+                if original_id != yolo_id:
+                    logger.warning(f"  ID修正: {original_id} -> {yolo_id}")
+        else:
+            logger.info("类别ID已经连续，无需修正")
+        
+        # 建立修正后的类别映射
+        corrected_mapping = {}
+        for class_name, original_id in original_mapping.items():
+            yolo_id = id_mapping[original_id]
+            corrected_mapping[class_name] = yolo_id
+            
+        logger.info("修正后的类别映射:")
+        for class_name, yolo_id in sorted(corrected_mapping.items(), key=lambda x: x[1]):
+            original_id = [k for k, v in original_mapping.items() if k == class_name][0]
+            original_id = original_mapping[class_name]
+            if needs_fix and original_id != yolo_id:
+                logger.info(f"  {class_name}: 原始ID {original_id} -> YOLO ID {yolo_id}")
+            else:
+                logger.info(f"  {class_name}: ID {yolo_id}")
+        
+        return corrected_mapping, id_mapping
     
     def _build_english_class_names(self) -> Dict[int, str]:
         """
@@ -470,7 +545,7 @@ class DataProcessor:
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
             logger.debug(f"创建目录: {directory}")
-        
+    
         logger.info("训练数据目录结构创建完成")
     
     def _create_classification_directories(self, clean_first: bool = True):
@@ -761,14 +836,15 @@ class DataProcessor:
                 logger.error(f"未知类别: {class_name}")
                 return False
             
-            # 获取该类别的预期ID（从映射表中获取）
-            expected_class_id = self.class_mapping[class_name]
+            # 获取该类别的原始ID和YOLO连续ID
+            original_class_id = self.original_class_mapping[class_name]
+            yolo_class_id = self.class_mapping[class_name]  # 已经是修正后的连续ID
             
             # 读取源标注文件
             with open(source_label, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
             
-            # 验证并复制标注文件，确保类别ID一致
+            # 验证并复制标注文件，将原始ID转换为YOLO连续ID
             processed_lines = []
             for line_num, line in enumerate(lines, 1):
                 line = line.strip()
@@ -783,21 +859,21 @@ class DataProcessor:
                 
                 try:
                     # 解析原始数据
-                    original_class_id = int(parts[0])
+                    file_class_id = int(parts[0])
                     x, y, w, h = parts[1:5]
                     
-                    # 验证类别ID是否与映射表一致
-                    if original_class_id != expected_class_id:
+                    # 验证标注文件中的ID是否与该类别的原始ID一致
+                    if file_class_id != original_class_id:
                         logger.warning(f"标注文件 {source_label} 第{line_num}行类别ID不一致: "
-                                     f"映射表中 '{class_name}' 对应ID {expected_class_id}, "
-                                     f"但标注文件中为 {original_class_id}")
-                        # 使用映射表中的ID进行修正
-                        corrected_line = f"{expected_class_id} {x} {y} {w} {h}\n"
-                        processed_lines.append(corrected_line)
-                        logger.debug(f"修正类别ID: {original_class_id} -> {expected_class_id}")
-                    else:
-                        # 类别ID一致，直接使用原始行
-                        processed_lines.append(line + '\n')
+                                     f"映射表中 '{class_name}' 对应原始ID {original_class_id}, "
+                                     f"但标注文件中为 {file_class_id}")
+                    
+                    # 重新映射为YOLO连续序列ID
+                    corrected_line = f"{yolo_class_id} {x} {y} {w} {h}\n"
+                    processed_lines.append(corrected_line)
+                    
+                    if file_class_id != original_class_id or original_class_id != yolo_class_id:
+                        logger.debug(f"类别ID映射: 文件ID {file_class_id} -> 原始ID {original_class_id} -> YOLO ID {yolo_class_id}")
                         
                 except ValueError as e:
                     logger.warning(f"标注文件 {source_label} 第{line_num}行数值格式错误: {e}")
@@ -938,7 +1014,10 @@ class DataProcessor:
                     f.write(f"names: {config['names']}\n")
                     f.write(f"\n# 详细类别信息\n")
                     for i, name in enumerate(names_list):
-                        f.write(f"# {i}: {chinese_names_list[i]} -> {name}\n")
+                        # 通过排序的类别ID获取对应的中文名称
+                        class_id = sorted_class_ids[i]
+                        chinese_name = chinese_names_dict[class_id]
+                        f.write(f"# {i}: {chinese_name} -> {name}\n")
                 logger.info(f"检测配置文件已创建(简化格式): {config_file}")
             
         # 额外创建一个类别映射文件用于记录（使用实际类别ID）

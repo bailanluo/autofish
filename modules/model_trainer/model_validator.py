@@ -54,13 +54,33 @@ class ModelValidator:
             Tuple[Dict[int, str], Dict[int, str]]: 英文名称映射和中文名称映射
         """
         try:
-            # 直接使用用户提供的正确映射（训练配置文件可能不准确）
-            self.logger.info("使用用户提供的实际训练时类别映射")
+            # 优先级顺序：训练配置文件 > 映射文件 > 数据目录扫描 > 默认映射
+            
+            # 1. 尝试从训练配置文件加载
+            train_config = self.data_dir / "train_config.yaml"
+            if train_config.exists():
+                self.logger.info("从训练配置文件加载类别映射")
+                return self._load_from_train_config(train_config)
+            
+            # 2. 尝试从类别映射文件加载
+            mapping_file = self.data_dir / "class_mapping.txt"
+            if mapping_file.exists():
+                self.logger.info("从类别映射文件加载类别映射")
+                return self._load_from_mapping_file(mapping_file)
+            
+            # 3. 尝试从数据目录生成
+            raw_dir = self.data_dir / "raw" / "images"
+            if raw_dir.exists():
+                self.logger.info("从数据目录动态生成类别映射")
+                return self._generate_from_data_dir()
+            
+            # 4. 使用默认映射（最后手段）
+            self.logger.warning("使用默认类别映射（可能不准确）")
             return self._get_default_mapping()
             
         except Exception as e:
             self.logger.error(f"加载类别映射失败: {str(e)}")
-            # 如果出错，仍然返回正确的映射
+            # 如果出错，仍然返回默认映射
             return self._get_default_mapping()
     
     def _load_from_train_config(self, config_file: Path) -> Tuple[Dict[int, str], Dict[int, str]]:
@@ -71,22 +91,48 @@ class ModelValidator:
             config = yaml.safe_load(f)
         
         # 从配置文件中提取类别映射
-        class_names = config.get('names', {})
+        names_list = config.get('names', [])
+        english_names = {}
         chinese_names = {}
         
-        # 从class_details中获取中文名称
-        if 'class_details' in config and 'chinese_names' in config['class_details']:
-            chinese_names = config['class_details']['chinese_names']
-        else:
-            # 如果没有中文名称，使用英文名称
-            chinese_names = class_names.copy()
+        # 如果names是列表格式（YOLO标准格式）
+        if isinstance(names_list, list):
+            for i, name in enumerate(names_list):
+                english_names[i] = name
+        # 如果names是字典格式
+        elif isinstance(names_list, dict):
+            english_names = {int(k): str(v) for k, v in names_list.items()}
         
-        # 确保类型正确
-        class_names = {int(k): str(v) for k, v in class_names.items()}
-        chinese_names = {int(k): str(v) for k, v in chinese_names.items()}
+        # 从class_details中获取中文名称和完整映射
+        if 'class_details' in config:
+            class_details = config['class_details']
+            
+            # 获取中文名称映射
+            if 'chinese_names' in class_details:
+                chinese_dict = class_details['chinese_names']
+                chinese_names = {int(k): str(v) for k, v in chinese_dict.items()}
+            
+            # 获取英文名称映射（更准确）
+            if 'english_names' in class_details:
+                english_dict = class_details['english_names']
+                english_names = {int(k): str(v) for k, v in english_dict.items()}
         
-        self.logger.info(f"从训练配置文件加载类别映射: {len(class_names)} 个类别")
-        return class_names, chinese_names
+        # 如果没有中文名称，使用英文名称作为备选
+        if not chinese_names:
+            chinese_names = english_names.copy()
+        
+        # 确保两个映射的键一致
+        all_ids = set(english_names.keys()) | set(chinese_names.keys())
+        for class_id in all_ids:
+            if class_id not in english_names:
+                english_names[class_id] = f"class_{class_id}"
+            if class_id not in chinese_names:
+                chinese_names[class_id] = f"类别_{class_id}"
+        
+        self.logger.info(f"从训练配置文件加载类别映射: {len(english_names)} 个类别")
+        self.logger.debug(f"类别映射: {dict(sorted(chinese_names.items()))}")
+        
+        return english_names, chinese_names
     
     def _load_from_mapping_file(self, mapping_file: Path) -> Tuple[Dict[int, str], Dict[int, str]]:
         """从映射文件加载类别"""
@@ -112,29 +158,90 @@ class ModelValidator:
         return class_names, chinese_names
     
     def _generate_from_data_dir(self) -> Tuple[Dict[int, str], Dict[int, str]]:
-        """从数据目录动态生成类别映射"""
-        raw_images_dir = self.data_dir / "raw" / "images"
+        """从数据目录动态生成类别映射（与DataProcessor逻辑一致）"""
+        raw_labels_dir = self.data_dir / "raw" / "labels"
         
-        if not raw_images_dir.exists():
-            self.logger.warning(f"原始数据目录不存在: {raw_images_dir}")
+        if not raw_labels_dir.exists():
+            self.logger.warning(f"标注数据目录不存在: {raw_labels_dir}")
             return self._get_default_mapping()
         
-        # 获取所有类别目录
-        class_dirs = [d for d in raw_images_dir.iterdir() if d.is_dir()]
-        class_dirs.sort()  # 确保顺序一致
+        # 获取所有类别目录（从labels目录获取，与DataProcessor一致）
+        class_dirs = [d for d in raw_labels_dir.iterdir() if d.is_dir()]
+        class_dirs.sort(key=lambda x: x.name)  # 确保顺序一致
         
-        class_names = {}
+        original_mapping = {}
+        
+        # 从每个类别目录的标注文件中提取类别ID（与DataProcessor._build_class_mapping逻辑一致）
+        for class_dir in class_dirs:
+            class_name = class_dir.name
+            
+            # 获取该类别目录下的第一个标注文件
+            label_files = list(class_dir.glob('*.txt'))
+            if not label_files:
+                self.logger.warning(f"类别 '{class_name}' 目录下没有找到标注文件，跳过")
+                continue
+                
+            # 使用第一个标注文件
+            first_label_file = label_files[0]
+            
+            try:
+                with open(first_label_file, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                
+                # 获取第一行的第一个ID
+                class_id = None
+                for line in lines:
+                    line = line.strip()
+                    if line:  # 跳过空行
+                        parts = line.split()
+                        if len(parts) >= 5:  # YOLO格式：class_id x y w h
+                            try:
+                                class_id = int(parts[0])
+                                break  # 获取第一个ID后立即退出
+                            except ValueError:
+                                continue
+                
+                if class_id is not None:
+                    # 检查是否有重复的类别ID
+                    if class_id in original_mapping.values():
+                        existing_class = [k for k, v in original_mapping.items() if v == class_id][0]
+                        self.logger.error(f"类别ID冲突: '{class_name}' 和 '{existing_class}' 都使用ID {class_id}")
+                        continue
+                    
+                    original_mapping[class_name] = class_id
+                    self.logger.debug(f"类别映射: '{class_name}' -> ID {class_id}")
+                    
+            except Exception as e:
+                self.logger.error(f"读取类别 '{class_name}' 的标注文件失败: {str(e)}")
+                continue
+        
+        if not original_mapping:
+            self.logger.warning("未能从数据目录生成类别映射，使用默认映射")
+            return self._get_default_mapping()
+        
+        # 确保类别ID连续性（与DataProcessor._ensure_continuous_class_ids逻辑一致）
+        original_ids = sorted(original_mapping.values())
+        expected_ids = list(range(len(original_ids)))
+        
+        # 建立原始ID到连续ID的映射
+        id_mapping = {}
+        for i, original_id in enumerate(original_ids):
+            id_mapping[original_id] = i
+        
+        # 建立最终的类别映射
+        english_names = {}
         chinese_names = {}
         
-        for idx, class_dir in enumerate(class_dirs):
-            chinese_name = class_dir.name
-            # 简单的中文转英文规则
-            english_name = self._chinese_to_english(chinese_name)
-            
-            class_names[idx] = english_name
-            chinese_names[idx] = chinese_name
+        for class_name, original_id in original_mapping.items():
+            yolo_id = id_mapping[original_id]
+            english_names[yolo_id] = self._chinese_to_english(class_name)
+            chinese_names[yolo_id] = class_name
         
-        return class_names, chinese_names
+        self.logger.info(f"从数据目录生成类别映射: {len(english_names)} 个类别")
+        if original_ids != expected_ids:
+            self.logger.info(f"类别ID修正: {original_ids} -> {expected_ids}")
+        
+        return english_names, chinese_names
     
     def _chinese_to_english(self, chinese_name: str) -> str:
         """简单的中文转英文映射"""
@@ -154,29 +261,28 @@ class ModelValidator:
         return mapping.get(chinese_name, chinese_name.lower().replace(' ', '_'))
     
     def _get_default_mapping(self) -> Tuple[Dict[int, str], Dict[int, str]]:
-        """获取默认的类别映射（使用用户提供的正确映射）"""
-        # 使用用户提供的实际训练时映射
+        """获取默认的类别映射（最后的备选方案）"""
+        self.logger.warning("使用默认类别映射，可能与实际训练数据不符")
+        self.logger.warning("建议确保存在有效的训练配置文件(train_config.yaml)或映射文件(class_mapping.txt)")
+        
+        # 提供一个基本的备选映射（基于常见的钓鱼状态）
         chinese_names = {
-            0: '等待上钩状态',
-            1: '鱼上钩末提线状态',
-            2: '提线中_耐力未到二分之一状态',
-            3: '提线中_耐力已到二分之一状态',
-            4: '向右拉_txt',
-            5: '向左拉_txt',
-            6: '钓鱼成功状态_txt'
+            0: '状态_0',
+            1: '状态_1', 
+            2: '状态_2',
+            3: '状态_3',
+            4: '状态_4'
         }
         
-        class_names = {
-            0: 'waiting_hook',
-            1: 'fishing_success_txt',
-            2: 'pulling_stamina_low',
-            3: 'pulling_stamina_half',
-            4: 'pull_right_txt',
-            5: 'pull_left_txt',
-            6: 'hooked_no_pull'
+        english_names = {
+            0: 'state_0',
+            1: 'state_1',
+            2: 'state_2', 
+            3: 'state_3',
+            4: 'state_4'
         }
         
-        return class_names, chinese_names
+        return english_names, chinese_names
     
     def validate_model(self, model_path: str) -> Dict[str, float]:
         """

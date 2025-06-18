@@ -181,9 +181,7 @@ class FisherConfig:
             1: "鱼上钩末提线状态",
             2: "提线中_耐力未到二分之一状态", 
             3: "提线中_耐力已到二分之一状态",
-            4: "向右拉_txt",
-            5: "向左拉_txt",
-            6: "钓鱼成功状态_txt"
+            4: "钓鱼成功状态_txt"
         }
     
     def update_hotkey(self, key_name: str, key_combination: str) -> None:

@@ -276,19 +276,16 @@ class InputController:
         """
         根据方向状态按下对应按键
         
+        注意：此方法已废弃，新模型中不再使用状态4和5的方向检测
+        
         Args:
-            direction_state: 方向状态 (4: 向右拉, 5: 向左拉)
+            direction_state: 方向状态 (已废弃)
             
         Returns:
-            bool: 是否成功按键
+            bool: 总是返回False（已废弃）
         """
-        if direction_state == 4:  # 向右拉
-            return self.press_key('d')
-        elif direction_state == 5:  # 向左拉
-            return self.press_key('a')
-        else:
-            print(f"未知的方向状态: {direction_state}")
-            return False
+        print(f"handle_direction_key已废弃，状态{direction_state}不再支持")
+        return False
     
     def handle_success_key(self) -> bool:
         """

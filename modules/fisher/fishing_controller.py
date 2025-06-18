@@ -3,11 +3,12 @@ Fisher钓鱼模块核心控制器
 实现钓鱼状态机逻辑和多线程协调，协调模型检测和输入控制
 
 作者: AutoFish Team
-版本: v1.0.11
+版本: v1.0.12
 创建时间: 2024-12-28
 更新时间: 2025-01-17
 
 修复历史:
+v1.0.12: 适配新模型状态映射，移除状态4/5，将原状态6改为状态4(钓鱼成功)
 v1.0.11: 修复状态4/5识别问题，添加对向左拉/向右拉状态的处理，解决卡在鱼上钩状态的问题
 v1.0.10: 动态检测间隔系统优化
 v1.0.9: 状态机逻辑修正，完全移除OCR依赖
@@ -304,8 +305,8 @@ class FishingController:
             
             total_detection_count += 1
             
-            # 检测当前状态 - 添加详细调试信息（包含状态4/5的处理）
-            result = model_detector.detect_multiple_states([2, 3, 4, 5, 6])
+            # 检测当前状态 - 更新状态检测范围（移除状态4和5，状态6改为状态4）
+            result = model_detector.detect_multiple_states([2, 3, 4])
             
             # 添加详细的调试检测 - 每10次输出一次详细信息
             if total_detection_count % 10 == 0:
@@ -330,7 +331,7 @@ class FishingController:
                                 print(f"🔍 [调试] 🎯 检测到 {len(classes)} 个目标:")
                                 for i, (cls, conf) in enumerate(zip(classes, confidences)):
                                     state_name = model_detector.state_names.get(cls, f"未知状态_{cls}")
-                                    target_marker = "🎉" if cls in [2, 3, 4, 5, 6] else "⚪"
+                                    target_marker = "🎉" if cls in [2, 3, 4] else "⚪"
                                     thresh_marker = "✅" if conf >= fisher_config.model.confidence_threshold else "❌"
                                     print(f"      {target_marker} [{i+1}] 状态{cls}({state_name}) - 置信度:{conf:.3f} {thresh_marker}")
                             else:
@@ -354,7 +355,7 @@ class FishingController:
                 no_detection_count += 1
                 if no_detection_count % 50 == 0:  # 每5秒输出一次调试信息
                     elapsed = time.time() - pulling_start
-                    print(f"🔍 提线阶段无法检测到状态2/3/4/5/6，已尝试 {no_detection_count} 次，耗时 {elapsed:.1f}秒")
+                    print(f"🔍 提线阶段无法检测到状态2/3/4，已尝试 {no_detection_count} 次，耗时 {elapsed:.1f}秒")
                     print(f"📊 检测统计：总检测 {total_detection_count} 次，成功率 {((total_detection_count-no_detection_count)/total_detection_count*100):.1f}%")
                     
                     # 输出当前实际检测到的状态 - 详细诊断
@@ -428,25 +429,7 @@ class FishingController:
                     print(f"⏸️  暂停 {fisher_config.timing.state3_pause_time}秒...")
                     time.sleep(fisher_config.timing.state3_pause_time)
                 
-                elif detected_state == 4:  # 向右拉_txt (按状态3处理)
-                    print("🟡 状态4(向右拉): 按状态3处理，暂停点击")
-                    self._update_status(FishingState.PULLING_HALFWAY)
-                    input_controller.pause_clicking()
-                    
-                    # 等待1秒后重新检测
-                    print(f"⏸️  暂停 {fisher_config.timing.state3_pause_time}秒...")
-                    time.sleep(fisher_config.timing.state3_pause_time)
-                
-                elif detected_state == 5:  # 向左拉_txt (按状态3处理)
-                    print("🟡 状态5(向左拉): 按状态3处理，暂停点击")
-                    self._update_status(FishingState.PULLING_HALFWAY)
-                    input_controller.pause_clicking()
-                    
-                    # 等待1秒后重新检测
-                    print(f"⏸️  暂停 {fisher_config.timing.state3_pause_time}秒...")
-                    time.sleep(fisher_config.timing.state3_pause_time)
-                    
-                elif detected_state == 6:  # 钓鱼成功
+                elif detected_state == 4:  # 钓鱼成功状态_txt
                     print("🎉 检测到钓鱼成功状态！")
                     
                     # 停止点击和按键循环
@@ -479,13 +462,13 @@ class FishingController:
             bool: 是否成功处理
         """
         print("处理钓鱼成功状态...")
-        self._update_status(FishingState.SUCCESS, detected_state=6)
+        self._update_status(FishingState.SUCCESS, detected_state=4)
         
         while not self.should_stop:
             # 等待1.5秒后按f键
             if input_controller.wait_and_handle_success():
-                # 检查状态6是否消失
-                result = model_detector.detect_specific_state(6)
+                # 检查状态4是否消失
+                result = model_detector.detect_specific_state(4)
                 if not result:
                     print("成功状态已消失，准备抛竿")
                     return self._handle_casting()
