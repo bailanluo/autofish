@@ -47,7 +47,7 @@ def check_dependencies() -> bool:
 def main():
     """主函数"""
     print("=" * 50)
-    print("Fisher钓鱼模块 v1.0.11")
+    print("Fisher钓鱼模块 v1.0.12")
     print("智能钓鱼辅助工具")
     print("=" * 50)
     

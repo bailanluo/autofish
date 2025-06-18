@@ -32,7 +32,6 @@ class ModelDetector:
         self.model: Optional[YOLO] = None  # YOLO模型实例
         self.device: str = "cpu"  # 计算设备
         self.is_initialized: bool = False  # 初始化状态
-        self.screenshot_tool = None  # 屏幕截图工具（延迟初始化）
         
         # 状态名称映射
         self.state_names = fisher_config.get_state_names()
@@ -105,40 +104,63 @@ class ModelDetector:
         Returns:
             np.ndarray: 截取的图像，BGR格式
         """
-        try:
-            # 线程安全的screenshot工具初始化
-            if self.screenshot_tool is None:
-                self.screenshot_tool = mss.mss()
-            
-            if region:
-                # 指定区域截图
-                monitor = {
-                    "left": region[0],
-                    "top": region[1], 
-                    "width": region[2],
-                    "height": region[3]
-                }
-            else:
-                # 全屏截图
-                monitor = self.screenshot_tool.monitors[1]  # 主显示器
-            
-            # 截取屏幕
-            screenshot = self.screenshot_tool.grab(monitor)
-            
-            # 转换为numpy数组
-            img = np.array(screenshot)
-            
-            # 转换颜色格式：BGRA -> BGR
-            if img.shape[2] == 4:
-                img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-            elif img.shape[2] == 3:
-                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-            
-            return img
-            
-        except Exception as e:
-            print(f"屏幕截取失败: {e}")
-            return None
+        max_retries = 3  # 最大重试次数
+        
+        for attempt in range(max_retries):
+            # 每次都重新创建MSS对象，避免线程本地存储问题
+            screenshot_tool = None
+            try:
+                # 创建新的MSS实例
+                screenshot_tool = mss.mss()
+                
+                if region:
+                    # 指定区域截图
+                    monitor = {
+                        "left": region[0],
+                        "top": region[1], 
+                        "width": region[2],
+                        "height": region[3]
+                    }
+                else:
+                    # 全屏截图
+                    monitor = screenshot_tool.monitors[1]  # 主显示器
+                
+                # 截取屏幕
+                screenshot = screenshot_tool.grab(monitor)
+                
+                # 转换为numpy数组
+                img = np.array(screenshot)
+                
+                # 转换颜色格式：BGRA -> BGR
+                if img.shape[2] == 4:
+                    img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+                elif img.shape[2] == 3:
+                    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                
+                # 成功截图后立即关闭MSS对象
+                screenshot_tool.close()
+                return img
+                
+            except Exception as e:
+                print(f"屏幕截取失败 (尝试 {attempt + 1}/{max_retries}): {e}")
+                
+                # 确保关闭MSS对象
+                try:
+                    if screenshot_tool:
+                        screenshot_tool.close()
+                except:
+                    pass
+                
+                # 如果是最后一次尝试，返回None
+                if attempt == max_retries - 1:
+                    print("屏幕截取彻底失败，已重试所有次数")
+                    return None
+                
+                # 短暂等待后重试
+                import time
+                time.sleep(0.1)
+        
+        return None
     
     def detect_states(self, image: Optional[np.ndarray] = None, 
                      region: Optional[Tuple[int, int, int, int]] = None) -> Optional[Dict]:
@@ -270,9 +292,6 @@ class ModelDetector:
         try:
             if self.model:
                 del self.model
-            if self.screenshot_tool:
-                self.screenshot_tool.close()
-                self.screenshot_tool = None
             print("模型检测器资源清理完成")
         except Exception as e:
             print(f"资源清理失败: {e}")

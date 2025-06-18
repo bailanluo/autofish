@@ -168,14 +168,12 @@ class FishingController:
     def _wait_for_initial_state(self) -> bool:
         """
         等待初始状态 (状态0或1)
+        优化检测逻辑：如果检测到状态1，不立即确认，而是进入累计确认流程
         
         Returns:
             bool: 是否成功检测到初始状态
         """
         print("🔍 等待检测到初始状态 (0或1)...")
-        self._update_status(FishingState.WAITING_INITIAL)
-        self.timeout_start = time.time()
-        
         timeout = fisher_config.timing.initial_timeout
         detection_count = 0
         
@@ -206,9 +204,10 @@ class FishingController:
                     self._update_status(FishingState.WAITING_HOOK)
                     return True
                 elif detected_state == 1:
-                    print("📌 设置状态为：鱼上钩")
-                    self._update_status(FishingState.FISH_HOOKED)
-                    return True  # 修复：不要直接调用处理流程，让主循环来处理
+                    print("📌 检测到状态1，需要进行累计确认...")
+                    # 不立即确认状态1，让主循环调用_wait_for_hook()进行累计确认
+                    self._update_status(FishingState.WAITING_HOOK)  # 先设置为等待状态
+                    return True
             
             time.sleep(fisher_config.model.detection_interval)
         
@@ -218,12 +217,15 @@ class FishingController:
     def _wait_for_hook(self) -> bool:
         """
         等待鱼上钩 (状态1)
+        优化流程控制：需要累计识别到3次状态1才算有效，避免误判
         
         Returns:
             bool: 是否成功检测到鱼上钩
         """
         print("🎣 等待鱼上钩...")
         detection_count = 0
+        state1_confirm_count = 0  # 状态1累计确认次数（局部变量，每轮钓鱼重新计数）
+        required_confirms = 3     # 需要累计确认的次数
         
         while not self.should_stop:
             # 检查超时
@@ -237,14 +239,23 @@ class FishingController:
             detection_count += 1
             if detection_count % 50 == 0:  # 每5秒输出一次进度
                 print(f"🎣 等待鱼上钩中... 已尝试 {detection_count} 次，耗时 {elapsed:.1f}秒")
+                if state1_confirm_count > 0:
+                    print(f"    📊 状态1累计确认: {state1_confirm_count}/{required_confirms} 次")
             
             # 检测状态1
             result = model_detector.detect_multiple_states([1])
             if result:
                 confidence = result['confidence']
-                print(f"🐟 检测到鱼上钩！(置信度: {confidence:.2f})")
-                self._update_status(FishingState.FISH_HOOKED, detected_state=1, confidence=confidence)
-                return True  # 修复：返回True让主循环处理，而不是直接调用处理流程
+                state1_confirm_count += 1
+                print(f"🐟 检测到状态1 第{state1_confirm_count}次确认 (置信度: {confidence:.2f}) [{state1_confirm_count}/{required_confirms}]")
+                
+                # 只有累计确认3次才算真正的鱼上钩
+                if state1_confirm_count >= required_confirms:
+                    print(f"✅ 状态1已累计确认 {required_confirms} 次，确认鱼已上钩！")
+                    self._update_status(FishingState.FISH_HOOKED, detected_state=1, confidence=confidence)
+                    return True  # 修复：返回True让主循环处理，而不是直接调用处理流程
+                else:
+                    print(f"⏳ 状态1需要再确认 {required_confirms - state1_confirm_count} 次")
             
             time.sleep(fisher_config.model.detection_interval)
         
@@ -512,24 +523,26 @@ class FishingController:
             while not self.should_stop:
                 print(f"📍 主循环开始新一轮，当前状态: {self.status.current_state}")
                 
-                # 等待初始状态
+                # 等待初始状态（状态0或1）
                 print("🔍 开始等待初始状态...")
+                self._update_status(FishingState.WAITING_INITIAL)
+                self.timeout_start = time.time()
+                
                 if not self._wait_for_initial_state():
                     print("❌ 等待初始状态失败，退出主循环")
                     break
                 
                 print(f"✅ 初始状态检测完成，检测到状态: {self.status.current_detected_state}")
                 
-                # 根据检测到的初始状态进行处理
-                if self.status.current_detected_state == 0:
-                    print("🎣 检测到状态0，开始等待鱼上钩...")
-                    # 状态0：等待鱼上钩
-                    if not self._wait_for_hook():
-                        print("❌ 等待鱼上钩失败，退出主循环")
-                        break
-                    print(f"✅ 鱼上钩检测完成，当前检测状态: {self.status.current_detected_state}")
+                # 无论检测到状态0还是状态1，都需要进行累计确认
+                print("🎣 开始等待鱼上钩（需要累计确认）...")
+                if not self._wait_for_hook():
+                    print("❌ 等待鱼上钩失败，退出主循环")
+                    break
                 
-                # 处理鱼上钩状态（状态0转1或直接检测到状态1）
+                print(f"✅ 鱼上钩确认完成，当前检测状态: {self.status.current_detected_state}")
+                
+                # 处理鱼上钩状态
                 if self.status.current_detected_state == 1:
                     print("🐟 开始处理鱼上钩状态...")
                     if not self._handle_fish_hooked():
@@ -573,6 +586,19 @@ class FishingController:
         if not model_detector.is_initialized:
             print("模型检测器未初始化")
             return False
+        
+        print("正在准备钓鱼环境...")
+        
+        # 测试屏幕截图功能（新的MSS架构已无需重置）
+        print("验证屏幕截图功能...")
+        
+        # 测试屏幕截图功能
+        print("测试屏幕截图功能...")
+        test_image = model_detector.capture_screen()
+        if test_image is None:
+            print("❌ 屏幕截图测试失败，无法启动钓鱼")
+            return False
+        print("✅ 屏幕截图测试通过")
         
         # 重置状态
         self.status = FishingStatus()
@@ -625,6 +651,8 @@ class FishingController:
         # 等待按键循环线程结束
         if self.key_cycle_thread and self.key_cycle_thread.is_alive():
             self.key_cycle_thread.join(timeout=2.0)
+        
+        # 注意：新的MSS架构使用即用即释放模式，无需手动清理
     
     def get_status(self) -> FishingStatus:
         """

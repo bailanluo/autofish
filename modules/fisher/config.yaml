@@ -1,42 +1,97 @@
+# ============================================================================
+# Fisher钓鱼模块配置文件 v1.0.12
+# 
+# 此文件包含钓鱼模块的所有配置选项
+# 修改后需要重启程序才能生效
+# ============================================================================
+
+# 热键配置
+# 定义全局快捷键，支持组合键如 ctrl+alt+key
 hotkey:
-  emergency_stop: ctrl+alt+q
-  start_fishing: ctrl+alt+s
-  stop_fishing: ctrl+alt+x
+  start_fishing: f2              # 开始钓鱼快捷键
+  stop_fishing: f2               # 停止钓鱼快捷键 (与开始相同，按F2切换开始/停止)
+  emergency_stop: f12            # 紧急停止快捷键
+
+# 模型检测配置
+# YOLO模型相关参数设置
 model:
-  confidence_threshold: 0.5
-  detection_interval: 0.1
-  detection_interval_idle: 0.1
-  detection_interval_pulling: 0.04
-  detection_interval_success: 0.1
-  detection_interval_waiting: 0.08
-  device: auto
+  # 模型文件路径配置 (支持相对路径和绝对路径)
+  # 相对路径基于项目根目录 (autofish/)
+  # 示例: runs/fishing_model_latest.pt 或 model/yolo11n.pt
   model_path: runs/fishing_model_latest.pt
-ocr:
-  confidence_threshold: 60
-  detection_interval: 0.2
-  language: chi_sim+eng
-  tesseract_path: D:\Python\tool\Tesseract-OCR
+  
+  # 检测置信度阈值 (0.0-1.0)
+  # 值越高检测越严格，值越低检测越宽松
+  # 建议值: 0.3-0.7，默认0.5
+  confidence_threshold: 0.7
+  
+  # 设备选择: auto(自动), cpu(CPU), cuda(GPU)
+  # auto 会自动选择最优设备 (推荐)
+  device: auto
+  
+  # 动态检测间隔配置 (单位:秒)
+  # 不同钓鱼状态使用不同的检测频率以优化性能
+  detection_interval: 0.1           # 默认检测间隔
+  detection_interval_idle: 0.1      # 空闲状态检测间隔
+  detection_interval_waiting: 0.08  # 等待上钩状态检测间隔
+  detection_interval_pulling: 0.04  # 提线状态检测间隔 (最频繁，25次/秒)
+  detection_interval_success: 0.1   # 成功状态检测间隔
+
+# 时间控制配置
+# 控制各种操作的时间参数，所有时间单位为秒
 timing:
-  cast_hold_time: 2.0
-  click_delay_max: 0.127
-  click_delay_min: 0.054
-  click_interval_max: 0.12
-  click_interval_min: 0.08
-  initial_timeout: 180
-  key_pause_time: 0.5
-  key_press_time: 1.5
-  mouse_press_time_max: 0.12
-  mouse_press_time_min: 0.08
-  mouse_release_time_max: 0.08
-  mouse_release_time_min: 0.05
-  state3_pause_time: 1.0
-  success_wait_time: 1.5
+  # 超时设置
+  initial_timeout: 180             # 初始状态检测超时时间 (3分钟)
+  
+  # 鼠标操作时间控制 (新版随机化点击系统，防止被检测为脚本)
+  # 这些参数会在指定范围内随机取值，模拟真实人类操作
+  mouse_press_time_min: 0.08       # 鼠标按下时间最小值
+  mouse_press_time_max: 0.12       # 鼠标按下时间最大值
+  mouse_release_time_min: 0.05     # 鼠标释放后等待时间最小值
+  mouse_release_time_max: 0.08     # 鼠标释放后等待时间最大值
+  click_interval_min: 0.08         # 点击间隔最小值
+  click_interval_max: 0.12         # 点击间隔最大值
+  
+  # 按键操作时间控制 (a/d键循环系统)
+  key_press_time: 1.5              # 按键持续时间 - a/d键长按时间
+  key_pause_time: 0.5              # 按键暂停时间 - a/d键切换间隔
+  
+  # 钓鱼操作时间控制
+  cast_hold_time: 2.0              # 抛竿长按时间
+  state3_pause_time: 1.0           # 状态3暂停时间 - 耐力恢复等待
+  success_wait_time: 1.5           # 钓鱼成功等待时间 - 按f键前等待
+
+# 用户界面配置
+# 控制图形界面的显示和行为
 ui:
-  main_window_size:
-  - 400
-  - 300
-  show_status_window: true
-  status_window_color: blue
-  status_window_position:
-  - 10
-  - 10
+  # 主窗口设置
+  main_window_size: [400, 300]     # 主窗口大小 [宽度, 高度] (像素)
+  
+  # 状态窗口设置 (屏幕左上角的透明状态显示)
+  show_status_window: true         # 是否显示状态窗口 (true/false)
+  status_window_position: [10, 10] # 状态窗口位置 [x坐标, y坐标] (像素)
+  status_window_color: blue        # 状态窗口文字颜色 (blue/red/green/black等)
+
+# ============================================================================
+# 配置说明:
+# 
+# 1. 模型路径: 
+#    - 支持相对路径 (基于项目根目录autofish/)
+#    - 支持绝对路径 (如 D:/models/fishing_model.pt)
+#    - 确保模型文件存在且可访问
+# 
+# 2. 检测间隔优化:
+#    - 提线状态使用最高频率 (0.04s = 25次/秒)
+#    - 其他状态使用较低频率节省资源
+#    - 可根据硬件性能调整
+# 
+# 3. 时间随机化:
+#    - 鼠标操作使用随机时间间隔
+#    - 模拟人类操作模式
+#    - 降低被游戏检测的风险
+# 
+# 4. 热键说明:
+#    - 支持组合键: ctrl+alt+key, ctrl+shift+key等
+#    - 修改后需要重启程序生效
+#    - 确保不与其他程序冲突
+# ============================================================================

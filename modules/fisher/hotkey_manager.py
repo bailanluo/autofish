@@ -23,6 +23,7 @@ class HotkeyManager:
         """
         self.is_active = False  # 热键是否激活
         self.hotkey_thread: Optional[threading.Thread] = None  # 热键线程
+        self.fishing_active = False  # 钓鱼是否激活状态
         
         # 回调函数
         self.start_callback: Optional[Callable] = None
@@ -46,6 +47,15 @@ class HotkeyManager:
         self.stop_callback = stop_callback
         self.emergency_callback = emergency_callback
     
+    def set_fishing_active(self, active: bool) -> None:
+        """
+        设置钓鱼激活状态
+        
+        Args:
+            active: 是否激活
+        """
+        self.fishing_active = active
+    
     def start_listening(self) -> bool:
         """
         开始热键监听
@@ -57,17 +67,25 @@ class HotkeyManager:
             return True
         
         try:
-            # 注册热键
-            keyboard.add_hotkey(fisher_config.hotkey.start_fishing, self._on_start_fishing)
-            keyboard.add_hotkey(fisher_config.hotkey.stop_fishing, self._on_stop_fishing)
-            keyboard.add_hotkey(fisher_config.hotkey.emergency_stop, self._on_emergency_stop)
+            # 检查开始和停止热键是否相同
+            if fisher_config.hotkey.start_fishing == fisher_config.hotkey.stop_fishing:
+                # 相同热键，注册为切换功能
+                keyboard.add_hotkey(fisher_config.hotkey.start_fishing, self._on_toggle_fishing)
+                print(f"热键监听已启动:")
+                print(f"  切换钓鱼: {fisher_config.hotkey.start_fishing} (开始/停止)")
+            else:
+                # 不同热键，分别注册
+                keyboard.add_hotkey(fisher_config.hotkey.start_fishing, self._on_start_fishing)
+                keyboard.add_hotkey(fisher_config.hotkey.stop_fishing, self._on_stop_fishing)
+                print(f"热键监听已启动:")
+                print(f"  开始钓鱼: {fisher_config.hotkey.start_fishing}")
+                print(f"  停止钓鱼: {fisher_config.hotkey.stop_fishing}")
             
-            self.is_active = True
-            print(f"热键监听已启动:")
-            print(f"  开始钓鱼: {fisher_config.hotkey.start_fishing}")
-            print(f"  停止钓鱼: {fisher_config.hotkey.stop_fishing}")
+            # 注册紧急停止热键
+            keyboard.add_hotkey(fisher_config.hotkey.emergency_stop, self._on_emergency_stop)
             print(f"  紧急停止: {fisher_config.hotkey.emergency_stop}")
             
+            self.is_active = True
             return True
             
         except Exception as e:
@@ -81,8 +99,14 @@ class HotkeyManager:
         
         try:
             # 取消热键注册
-            keyboard.remove_hotkey(fisher_config.hotkey.start_fishing)
-            keyboard.remove_hotkey(fisher_config.hotkey.stop_fishing)
+            if fisher_config.hotkey.start_fishing == fisher_config.hotkey.stop_fishing:
+                # 相同热键，只需取消一次
+                keyboard.remove_hotkey(fisher_config.hotkey.start_fishing)
+            else:
+                # 不同热键，分别取消
+                keyboard.remove_hotkey(fisher_config.hotkey.start_fishing)
+                keyboard.remove_hotkey(fisher_config.hotkey.stop_fishing)
+            
             keyboard.remove_hotkey(fisher_config.hotkey.emergency_stop)
             
             self.is_active = False
@@ -90,6 +114,27 @@ class HotkeyManager:
             
         except Exception as e:
             print(f"停止热键监听失败: {e}")
+    
+    def _on_toggle_fishing(self) -> None:
+        """切换钓鱼状态热键处理"""
+        print(f"热键触发: 切换钓鱼状态 ({fisher_config.hotkey.start_fishing})")
+        
+        if self.fishing_active:
+            # 当前是激活状态，执行停止
+            print("当前钓鱼激活，执行停止操作")
+            if self.stop_callback:
+                try:
+                    self.stop_callback()
+                except Exception as e:
+                    print(f"停止钓鱼失败: {e}")
+        else:
+            # 当前是停止状态，执行开始
+            print("当前钓鱼停止，执行开始操作")
+            if self.start_callback:
+                try:
+                    self.start_callback()
+                except Exception as e:
+                    print(f"开始钓鱼失败: {e}")
     
     def _on_start_fishing(self) -> None:
         """开始钓鱼热键处理"""

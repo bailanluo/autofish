@@ -19,15 +19,15 @@ class ModelConfig:
     model_path: str = "runs/fishing_model_latest.pt"  # 模型文件路径
     confidence_threshold: float = 0.5  # 置信度阈值
     device: str = "auto"  # 设备选择: auto/cpu/cuda
-    detection_interval: float = 0.1  # 检测间隔(秒)
+    detection_interval: float = 0.1  # 默认检测间隔(秒)
+    
+    # 动态检测间隔配置
+    detection_interval_idle: float = 0.1  # 空闲状态检测间隔
+    detection_interval_waiting: float = 0.08  # 等待上钩状态检测间隔
+    detection_interval_pulling: float = 0.04  # 提线状态检测间隔 (最频繁)
+    detection_interval_success: float = 0.1  # 成功状态检测间隔
 
-@dataclass 
-class OCRConfig:
-    """OCR配置类"""
-    tesseract_path: str = r"D:\Python\tool\Tesseract-OCR"  # Tesseract路径
-    language: str = "chi_sim+eng"  # 识别语言
-    confidence_threshold: int = 60  # 置信度阈值
-    detection_interval: float = 0.2  # OCR检测间隔(秒)
+# OCR配置类已移除 - v1.0.12开始不再使用OCR功能
 
 @dataclass
 class TimingConfig:
@@ -42,9 +42,7 @@ class TimingConfig:
     click_interval_min: float = 0.18  # 点击间隔最小值(秒)
     click_interval_max: float = 0.25  # 点击间隔最大值(秒)
     
-    # 兼容旧版配置 (保留用于其他地方)
-    click_delay_min: float = 0.054  # 鼠标点击最小间隔(秒) - 兼容性保留
-    click_delay_max: float = 0.127  # 鼠标点击最大间隔(秒) - 兼容性保留
+    # 注意：click_delay_* 配置已废弃，请使用上面的 mouse_* 和 click_interval_* 配置
     
     # 其他时间配置
     state3_pause_time: float = 1.0  # 状态3暂停时间(秒)
@@ -85,7 +83,7 @@ class FisherConfig:
         
         # 初始化各配置类
         self.model = ModelConfig()
-        self.ocr = OCRConfig()
+        # self.ocr = OCRConfig()  # 已移除OCR功能
         self.timing = TimingConfig()
         self.hotkey = HotkeyConfig()
         self.ui = UIConfig()
@@ -102,7 +100,7 @@ class FisherConfig:
                 
                 # 更新各配置类
                 self._update_config_from_dict(self.model, config_data.get('model', {}))
-                self._update_config_from_dict(self.ocr, config_data.get('ocr', {}))
+                # self._update_config_from_dict(self.ocr, config_data.get('ocr', {}))  # 已移除OCR功能
                 self._update_config_from_dict(self.timing, config_data.get('timing', {}))
                 self._update_config_from_dict(self.hotkey, config_data.get('hotkey', {}))
                 self._update_config_from_dict(self.ui, config_data.get('ui', {}))
@@ -123,7 +121,7 @@ class FisherConfig:
             
             config_data = {
                 'model': self._config_to_dict(self.model),
-                'ocr': self._config_to_dict(self.ocr),
+                # 'ocr': self._config_to_dict(self.ocr),  # 已移除OCR功能
                 'timing': self._config_to_dict(self.timing),
                 'hotkey': self._config_to_dict(self.hotkey),
                 'ui': self._config_to_dict(self.ui)
@@ -166,11 +164,7 @@ class FisherConfig:
             print(f"模型文件不存在: {model_path}")
             return False
         
-        # 验证Tesseract路径
-        tesseract_exe = os.path.join(self.ocr.tesseract_path, "tesseract.exe")
-        if not os.path.exists(tesseract_exe):
-            print(f"Tesseract执行文件不存在: {tesseract_exe}")
-            return False
+        # 注意：OCR路径验证已移除，因为不再使用OCR功能
         
         return True
     

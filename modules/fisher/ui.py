@@ -15,6 +15,7 @@ from typing import Optional, Dict, Any
 from .config import fisher_config
 from .fishing_controller import fishing_controller, FishingStatus, FishingState
 from .model_detector import model_detector
+from .hotkey_manager import hotkey_manager
 
 
 class StatusWindow:
@@ -208,6 +209,15 @@ class SettingsDialog:
         ttk.Button(button_frame, text="保存", command=self._save_settings).pack(side=tk.RIGHT, padx=(5, 0))
         ttk.Button(button_frame, text="取消", command=self._cancel).pack(side=tk.RIGHT)
         ttk.Button(button_frame, text="测试", command=self._test_settings).pack(side=tk.LEFT)
+        
+        # 创建版本标签
+        self.version_label = tk.Label(
+            button_frame, 
+            text="Fisher v1.0.10",  # 更新版本号
+            font=("Arial", 8),
+            fg="gray"
+        )
+        self.version_label.pack(side=tk.BOTTOM, pady=(10, 0))
     
     def _save_settings(self) -> None:
         """保存设置"""
@@ -275,7 +285,7 @@ class FisherUI:
         
         # 创建主窗口
         self.root = tk.Tk()
-        self.root.title("Fisher钓鱼模块 v1.0")
+        self.root.title("Fisher钓鱼模块 v1.0.12")
         
         # 设置窗口大小和位置
         width, height = fisher_config.ui.main_window_size
@@ -298,6 +308,17 @@ class FisherUI:
         
         # 设置钓鱼控制器回调
         fishing_controller.set_status_callback(self._on_status_update)
+        
+        # 设置热键管理器回调并启动热键监听
+        hotkey_manager.set_callbacks(
+            start_callback=self._hotkey_start_fishing,
+            stop_callback=self._hotkey_stop_fishing,
+            emergency_callback=self._hotkey_emergency_stop
+        )
+        if hotkey_manager.start_listening():
+            self._append_status("热键监听已启动")
+        else:
+            self._append_status("热键监听启动失败")
         
         # 绑定关闭事件
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
@@ -369,7 +390,7 @@ class FisherUI:
         self.status_text.config(yscrollcommand=scrollbar.set)
         
         # 初始状态信息
-        self._append_status("Fisher钓鱼模块已启动 v1.0.9")
+        self._append_status("Fisher钓鱼模块已启动 v1.0.12")
         self._append_status(f"模型状态: {'已加载' if model_detector.is_initialized else '未加载'}")
         self._append_status("点击'开始钓鱼'开始自动钓鱼")
     
@@ -426,6 +447,40 @@ class FisherUI:
         
         threading.Thread(target=stop_thread, daemon=True).start()
     
+    def _hotkey_start_fishing(self) -> None:
+        """热键开始钓鱼回调"""
+        if self.root:
+            self.root.after(0, self._start_fishing)
+    
+    def _hotkey_stop_fishing(self) -> None:
+        """热键停止钓鱼回调"""
+        if self.root:
+            self.root.after(0, self._stop_fishing)
+    
+    def _hotkey_emergency_stop(self) -> None:
+        """热键紧急停止回调"""
+        if self.root:
+            self.root.after(0, self._emergency_stop)
+    
+    def _emergency_stop(self) -> None:
+        """紧急停止所有操作"""
+        self._append_status("🚨 紧急停止！")
+        
+        # 停止钓鱼控制器
+        fishing_controller.emergency_stop()
+        
+        # 更新UI状态
+        self.is_running = False
+        self.start_button.config(state=tk.NORMAL)
+        self.stop_button.config(state=tk.DISABLED)
+        
+        # 通知热键管理器状态变化
+        hotkey_manager.set_fishing_active(False)
+        
+        # 隐藏状态窗口
+        if self.status_window:
+            self.status_window.hide()
+    
     def _show_settings(self) -> None:
         """显示设置对话框"""
         if not self.settings_dialog:
@@ -440,6 +495,9 @@ class FisherUI:
         self.stop_button.config(state=tk.NORMAL)
         self._append_status("钓鱼已启动")
         
+        # 通知热键管理器状态变化
+        hotkey_manager.set_fishing_active(True)
+        
         # 显示状态窗口
         if fisher_config.ui.show_status_window and self.status_window:
             self.status_window.show()
@@ -450,6 +508,9 @@ class FisherUI:
         self.start_button.config(state=tk.NORMAL)
         self.stop_button.config(state=tk.DISABLED)
         self._append_status("钓鱼已停止")
+        
+        # 通知热键管理器状态变化
+        hotkey_manager.set_fishing_active(False)
         
         # 隐藏状态窗口
         if self.status_window:
@@ -513,11 +574,18 @@ class FisherUI:
     
     def cleanup(self) -> None:
         """清理资源"""
-        if self.status_window:
-            self.status_window.destroy()
+        print("清理UI资源")
         
+        # 停止热键监听
+        hotkey_manager.stop_listening()
+        
+        # 停止钓鱼
         if self.is_running:
             fishing_controller.emergency_stop()
+        
+        # 销毁状态窗口
+        if self.status_window:
+            self.status_window.destroy()
 
 # 全局UI实例
 fisher_ui = FisherUI() 
