@@ -3,11 +3,16 @@ Fisher钓鱼模块核心控制器
 实现钓鱼状态机逻辑和多线程协调，协调模型检测和输入控制
 
 作者: AutoFish Team
-版本: v1.0.13
+版本: v1.0.14
 创建时间: 2024-12-28
 更新时间: 2025-01-17
 
 修复历史:
+v1.0.14: 重大修复 - 状态流转验证系统
+         - 添加状态流转规则验证：0→1→2/3→4的严格顺序
+         - 修复等待阶段直接检测到成功状态的问题
+         - 新增状态历史追踪和允许状态管理
+         - 优化检测频率配置和性能测试工具
 v1.0.13: 集成统一日志系统，替换print语句，解决内存占用问题
 v1.0.12: 适配新模型状态映射，移除状态4/5，将原状态6改为状态4(钓鱼成功)
 v1.0.11: 修复状态4/5识别问题，添加对向左拉/向右拉状态的处理，解决卡在鱼上钩状态的问题
@@ -18,7 +23,7 @@ v1.0.9: 状态机逻辑修正，完全移除OCR依赖
 import time
 import threading
 from enum import Enum
-from typing import Optional, Callable, Dict, Any
+from typing import Optional, Callable, Dict, Any, List
 from dataclasses import dataclass
 
 # 导入统一日志系统
@@ -84,6 +89,11 @@ class FishingController:
         # 超时管理
         self.timeout_start: Optional[float] = None  # 超时开始时间
         
+        # 状态流转验证 - 新增状态历史追踪
+        self.state_history: List[int] = []  # 状态历史记录
+        self.current_fishing_phase: str = "初始化"  # 当前钓鱼阶段
+        self.allowed_states: List[int] = [0, 1]  # 当前允许的状态
+        
         logger.info("钓鱼控制器初始化完成")
     
     def set_status_callback(self, callback: Callable[[FishingStatus], None]) -> None:
@@ -95,20 +105,117 @@ class FishingController:
         """
         self.status_callback = callback
     
+    def _is_valid_state_transition(self, new_state: int) -> bool:
+        """
+        验证状态流转是否有效
+        根据钓鱼逻辑规则验证状态切换的合法性
+        
+        状态流转规则:
+        - 0(等待上钩) 必须在 1(鱼上钩) 之前
+        - 1 之前不一定有 0，但 1 之后必不可能有 0
+        - 2、3(提线中) 必在 1 之后，4(成功) 之前
+        - 2、3 之间顺序无所谓
+        - 4(成功) 必在 2、3 之后
+        
+        Args:
+            new_state: 新检测到的状态
+            
+        Returns:
+            bool: 状态流转是否有效
+        """
+        # 检查是否在允许的状态列表中
+        if new_state not in self.allowed_states:
+            logger.warning(f"⚠️  状态流转验证失败: 状态{new_state}不在当前允许状态{self.allowed_states}中")
+            logger.warning(f"   📜 当前阶段: {self.current_fishing_phase}")
+            logger.warning(f"   📚 状态历史: {self.state_history[-10:]}")  # 只显示最近10个状态
+            return False
+        
+        # 检查状态历史中的逻辑约束
+        if self.state_history:
+            last_state = self.state_history[-1]
+            
+            # 规则1: 状态1之后不能再出现状态0
+            if new_state == 0 and 1 in self.state_history:
+                logger.warning(f"⚠️  状态流转验证失败: 检测到状态1后不应再出现状态0")
+                return False
+            
+            # 规则2: 状态4(成功)必须在状态2或3之后
+            if new_state == 4 and not (2 in self.state_history or 3 in self.state_history):
+                logger.warning(f"⚠️  状态流转验证失败: 状态4(成功)必须在状态2或3之后出现")
+                return False
+            
+            # 规则3: 状态2、3必须在状态1之后
+            if new_state in [2, 3] and 1 not in self.state_history:
+                logger.warning(f"⚠️  状态流转验证失败: 状态{new_state}必须在状态1之后出现")
+                return False
+        
+        return True
+    
+    def _update_allowed_states(self, current_state: int) -> None:
+        """
+        根据当前状态更新允许的下一个状态
+        
+        Args:
+            current_state: 当前确认的状态
+        """
+        if current_state == 0:  # 等待上钩状态
+            self.allowed_states = [0, 1]  # 可以继续等待或鱼上钩
+            self.current_fishing_phase = "等待上钩"
+            
+        elif current_state == 1:  # 鱼上钩状态
+            self.allowed_states = [1, 2, 3]  # 可以继续鱼上钩或进入提线
+            self.current_fishing_phase = "鱼上钩"
+            
+        elif current_state in [2, 3]:  # 提线中状态
+            self.allowed_states = [2, 3, 4]  # 可以在提线状态间切换或成功
+            self.current_fishing_phase = "提线中"
+            
+        elif current_state == 4:  # 钓鱼成功状态
+            self.allowed_states = [4]  # 只允许保持成功状态，直到抛竿
+            self.current_fishing_phase = "钓鱼成功"
+        
+        logger.info(f"🎯 状态流转更新: {self.current_fishing_phase} | 允许状态: {self.allowed_states}")
+    
+    def _reset_state_tracking(self) -> None:
+        """重置状态追踪，开始新一轮钓鱼"""
+        self.state_history.clear()
+        self.current_fishing_phase = "初始化"
+        self.allowed_states = [0, 1]
+        logger.info(f"🔄 状态追踪已重置，开始新一轮钓鱼")
+    
     def _update_status(self, state: Optional[FishingState] = None, 
                       detected_state: Optional[int] = None,
                       confidence: Optional[float] = None,
-                      error_message: Optional[str] = None) -> None:
+                      error_message: Optional[str] = None,
+                      force_update: bool = False) -> None:
         """
-        更新钓鱼状态
+        更新钓鱼状态，包含状态流转验证
         
         Args:
             state: 新的钓鱼状态
             detected_state: 检测到的状态编号
             confidence: 检测置信度
             error_message: 错误信息
+            force_update: 是否强制更新（跳过验证）
         """
         with self.thread_lock:
+            # 状态流转验证
+            if detected_state is not None and not force_update:
+                if not self._is_valid_state_transition(detected_state):
+                    logger.warning(f"❌ 拒绝无效状态流转: {detected_state}")
+                    return  # 拒绝无效的状态更新
+                
+                # 记录有效状态到历史
+                self.state_history.append(detected_state)
+                
+                # 更新允许的状态
+                self._update_allowed_states(detected_state)
+                
+                # 限制状态历史长度，避免内存泄漏
+                if len(self.state_history) > 100:
+                    self.state_history = self.state_history[-50:]  # 保留最近50个状态
+            
+            # 更新状态信息
             if state is not None:
                 self.status.current_state = state
             if detected_state is not None:
@@ -199,13 +306,13 @@ class FishingController:
             if detection_count % 50 == 0:  # 每5秒输出一次进度
                 logger.info(f"🔍 初始状态检测中... 已尝试 {detection_count} 次，耗时 {elapsed:.1f}秒")
             
-            # 检测状态0或1
-            result = model_detector.detect_multiple_states([0, 1])
+            # 检测当前允许的状态
+            result = model_detector.detect_multiple_states(self.allowed_states)
             if result:
                 detected_state = result['state']
                 confidence = result['confidence']
                 
-                logger.info(f"✅ 检测到初始状态: {detected_state} (置信度: {confidence:.2f})")
+                logger.info(f"✅ 检测到有效状态: {detected_state} (置信度: {confidence:.2f})")
                 self._update_status(detected_state=detected_state, confidence=confidence)
                 
                 if detected_state == 0:
@@ -251,12 +358,15 @@ class FishingController:
                 if state1_confirm_count > 0:
                     logger.info(f"    📊 状态1累计确认: {state1_confirm_count}/{required_confirms} 次")
             
-            # 检测状态1
-            result = model_detector.detect_multiple_states([1])
-            if result:
+            # 检测当前允许的状态（通常是[0,1]或[1,2,3]）
+            result = model_detector.detect_multiple_states(self.allowed_states)
+            if result and result['state'] == 1:  # 只处理状态1的确认
                 confidence = result['confidence']
                 state1_confirm_count += 1
                 logger.info(f"🐟 检测到状态1 第{state1_confirm_count}次确认 (置信度: {confidence:.2f}) [{state1_confirm_count}/{required_confirms}]")
+                
+                # 更新状态（但不立即确认，等待累计确认）
+                self._update_status(detected_state=1, confidence=confidence)
                 
                 # 只有累计确认3次才算真正的鱼上钩
                 if state1_confirm_count >= required_confirms:
@@ -325,8 +435,8 @@ class FishingController:
             
             total_detection_count += 1
             
-            # 检测当前状态 - 更新状态检测范围（移除状态4和5，状态6改为状态4）
-            result = model_detector.detect_multiple_states([2, 3, 4])
+            # 检测当前允许的状态（提线阶段通常是[2, 3, 4]）
+            result = model_detector.detect_multiple_states(self.allowed_states)
             
             # 添加详细的调试检测 - 每100次输出一次详细信息（减少频率）
             if total_detection_count % 100 == 0:
@@ -375,7 +485,7 @@ class FishingController:
                 no_detection_count += 1
                 if no_detection_count % 500 == 0:  # 每50秒输出一次调试信息（减少频率）
                     elapsed = time.time() - pulling_start
-                    logger.info(f"�� 提线阶段无法检测到状态2/3/4，已尝试 {no_detection_count} 次，耗时 {elapsed:.1f}秒")
+                    logger.info(f"🔄 提线阶段无法检测到状态2/3/4，已尝试 {no_detection_count} 次，耗时 {elapsed:.1f}秒")
                     logger.info(f"📊 检测统计：总检测 {total_detection_count} 次，成功率 {((total_detection_count-no_detection_count)/total_detection_count*100):.1f}%")
                     
                     # 输出当前实际检测到的状态 - 详细诊断
@@ -532,9 +642,12 @@ class FishingController:
             while not self.should_stop:
                 logger.info(f"📍 主循环开始新一轮，当前状态: {self.status.current_state}")
                 
+                # 重置状态追踪，开始新一轮钓鱼
+                self._reset_state_tracking()
+                
                 # 等待初始状态（状态0或1）
                 logger.info("🔍 开始等待初始状态...")
-                self._update_status(FishingState.WAITING_INITIAL)
+                self._update_status(FishingState.WAITING_INITIAL, force_update=True)
                 self.timeout_start = time.time()
                 
                 if not self._wait_for_initial_state():

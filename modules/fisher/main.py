@@ -22,7 +22,6 @@ from modules.logger import setup_logger
 # 修复相对导入问题 - 使用绝对导入
 from modules.fisher.config import fisher_config
 from modules.fisher.model_detector import model_detector
-from modules.fisher.ui import fisher_ui
 from modules.fisher.admin_utils import is_admin, check_and_elevate_privileges
 
 # 设置日志记录器
@@ -55,15 +54,14 @@ def main():
     """主函数"""
     try:
         logger.info("=" * 50)
-        logger.info("Fisher钓鱼模块 v1.0.13")
-        logger.info("智能钓鱼辅助工具")
+        logger.info("Fisher钓鱼模块 v1.0.14")
+        logger.info("智能钓鱼辅助工具 - 状态流转验证版")
         logger.info("=" * 50)
         
         # 检查管理员权限
         logger.info("检查管理员权限...")
         if not check_and_elevate_privileges():
             logger.warning("未获得管理员权限，程序可能无法正常工作")
-            input("按回车键继续...")
             return
         
         # 检查依赖项
@@ -73,6 +71,15 @@ def main():
             return
         
         logger.info("启动Fisher钓鱼模块...")
+        
+        # 优先使用美化UI，如果失败则回退到原UI
+        try:
+            from modules.fisher.ui_simple import fisher_ui
+            logger.info("使用美化UI界面")
+        except ImportError as e:
+            logger.warning(f"美化UI加载失败，回退到原UI: {e}")
+            from modules.fisher.ui import fisher_ui
+        
         # 启动UI界面
         fisher_ui.run()
         
@@ -82,9 +89,21 @@ def main():
         logger.error(f"程序运行异常: {e}")
         import traceback
         traceback.print_exc()
-        input("按回车键退出...")
+        # 如果是控制台环境，等待用户确认；如果是无窗口环境，直接退出
+        if sys.stdout.isatty():
+            input("按回车键退出...")
     finally:
         logger.info("Fisher钓鱼模块已退出")
+        # 确保程序彻底退出
+        try:
+            import tkinter as tk
+            # 如果有tkinter窗口，强制退出
+            root = tk.Tk()
+            root.quit()
+            root.destroy()
+        except:
+            pass
+        sys.exit(0)
 
 if __name__ == "__main__":
     main() 

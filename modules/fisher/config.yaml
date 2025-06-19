@@ -31,10 +31,19 @@ model:
   
   # 动态检测间隔配置 (单位:秒)
   # 不同钓鱼状态使用不同的检测频率以优化性能
+  # 注意：检测频率过快可能导致状态流转混乱，建议根据硬件性能调整
+  # 
+  # 性能测试说明：
+  # - 0.02s (50fps): 极高频率，可能导致状态检测不稳定
+  # - 0.04s (25fps): 高频率，适合提线阶段快速响应
+  # - 0.08s (12.5fps): 中频率，适合等待阶段
+  # - 0.1s (10fps): 标准频率，适合大多数情况
+  # 
+  # 使用前请运行 test_model_frequency.py 测试您的硬件最佳间隔
   detection_interval: 0.1           # 默认检测间隔
   detection_interval_idle: 0.1      # 空闲状态检测间隔
   detection_interval_waiting: 0.08  # 等待上钩状态检测间隔
-  detection_interval_pulling: 0.04  # 提线状态检测间隔 (最频繁，25次/秒)
+  detection_interval_pulling: 0.08  # 提线状态检测间隔 
   detection_interval_success: 0.1   # 成功状态检测间隔
 
 # 时间控制配置
@@ -59,7 +68,7 @@ timing:
   # 钓鱼操作时间控制
   cast_hold_time: 2.0              # 抛竿长按时间
   state3_pause_time: 1.0           # 状态3暂停时间 - 耐力恢复等待
-  success_wait_time: 1.5           # 钓鱼成功等待时间 - 按f键前等待
+  success_wait_time: 2.0           # 钓鱼成功等待时间 - 按f键前等待
 
 # 用户界面配置
 # 控制图形界面的显示和行为

@@ -54,14 +54,14 @@ def run_as_admin(script_path: Optional[str] = None) -> bool:
         print(f"正在以管理员身份重新启动程序...")
         print(f"启动命令: {params}")
         
-        # 使用ShellExecute以管理员身份启动
+        # 使用ShellExecute以管理员身份启动，隐藏控制台窗口
         result = ctypes.windll.shell32.ShellExecuteW(
             None,           # hwnd
             "runas",        # lpOperation (以管理员身份运行)
             python_exe,     # lpFile
             f'"{script_path}"' + (" " + " ".join(f'"{arg}"' for arg in sys.argv[1:]) if len(sys.argv) > 1 else ""),  # lpParameters
             None,           # lpDirectory
-            1               # nShowCmd (SW_SHOWNORMAL)
+            0               # nShowCmd (SW_HIDE - 隐藏窗口)
         )
         
         # 如果成功启动，返回True
