@@ -33,6 +33,7 @@ class ModelConfig:
 class TimingConfig:
     """时间配置类"""
     initial_timeout: int = 180  # 初始状态超时时间(秒) - 3分钟
+    initial_mouse_move_timeout: int = 40  # 初始状态检测时鼠标右移触发时间(秒) - v1.0.21新增
     
     # 新版鼠标点击时间控制 (v1.0.10)
     mouse_press_time_min: float = 0.08  # 鼠标按下时间最小值(秒)
@@ -46,10 +47,18 @@ class TimingConfig:
     
     # 其他时间配置
     state3_pause_time: float = 1.0  # 状态3暂停时间(秒)
-    success_wait_time: float = 1.5  # 钓鱼成功等待时间(秒)
+    success_wait_time: float = 2.5  # 钓鱼成功等待时间(秒) - v1.0.21调整为2.5秒
+    success_f_key_interval: float = 1.0  # 按f键后等待时间(秒) - v1.0.21新增
+    success_f_key_max_attempts: int = 3  # 按f键最大尝试次数 - v1.0.21新增
     cast_hold_time: float = 2.0  # 抛竿长按时间(秒)
     key_press_time: float = 1.5  # 按键持续时间(秒) - a/d键
     key_pause_time: float = 0.5  # 按键暂停时间(秒) - a/d键间隔
+
+@dataclass
+class RetryConfig:
+    """重试配置类 - v1.0.21新增"""
+    mouse_move_right_cm: float = 3.0  # 鼠标右移物理距离(厘米)
+    mouse_move_delay: float = 0.2  # 鼠标移动后等待时间(秒)
 
 @dataclass
 class HotkeyConfig:
@@ -85,6 +94,7 @@ class FisherConfig:
         self.model = ModelConfig()
         # self.ocr = OCRConfig()  # 已移除OCR功能
         self.timing = TimingConfig()
+        self.retry = RetryConfig()  # v1.0.21新增
         self.hotkey = HotkeyConfig()
         self.ui = UIConfig()
         
@@ -102,6 +112,7 @@ class FisherConfig:
                 self._update_config_from_dict(self.model, config_data.get('model', {}))
                 # self._update_config_from_dict(self.ocr, config_data.get('ocr', {}))  # 已移除OCR功能
                 self._update_config_from_dict(self.timing, config_data.get('timing', {}))
+                self._update_config_from_dict(self.retry, config_data.get('retry', {}))  # v1.0.21新增
                 self._update_config_from_dict(self.hotkey, config_data.get('hotkey', {}))
                 self._update_config_from_dict(self.ui, config_data.get('ui', {}))
                 
@@ -123,6 +134,7 @@ class FisherConfig:
                 'model': self._config_to_dict(self.model),
                 # 'ocr': self._config_to_dict(self.ocr),  # 已移除OCR功能
                 'timing': self._config_to_dict(self.timing),
+                'retry': self._config_to_dict(self.retry),  # v1.0.21新增
                 'hotkey': self._config_to_dict(self.hotkey),
                 'ui': self._config_to_dict(self.ui)
             }

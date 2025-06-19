@@ -3,11 +3,17 @@ Fisher钓鱼模块核心控制器
 实现钓鱼状态机逻辑和多线程协调，协调模型检测和输入控制
 
 作者: AutoFish Team
-版本: v1.0.18
+版本: v1.0.21
 创建时间: 2024-12-28
 更新时间: 2025-01-17
 
 修复历史:
+v1.0.21: 重大功能调整 - 鼠标右移时机调整和成功状态处理优化
+         - 鼠标右移时机调整：从状态1超时3秒改为初始状态检测40秒时触发
+         - 成功状态处理优化：检测到成功后立即停止按键循环和点击，等待2.5秒后按F键
+         - F键重试机制：按F键后1秒检查状态消失，重复最多3次，全部可配置
+         - 配置化设计：40秒、2.5秒、1秒、3次重试等参数全部写入配置文件
+         - 流程优化：移除重试抛竿中的鼠标右移，避免重复操作
 v1.0.18: 新功能 - 状态1超时重试机制
          - 新增：如果状态1持续3秒没有进入提线阶段，自动重新抛竿
          - 智能检测：检测状态2/3/4的出现来判断是否进入提线阶段
@@ -322,13 +328,16 @@ class FishingController:
         """
         等待初始状态 (状态0或1)
         优化检测逻辑：如果检测到状态1，不立即确认，而是进入累计确认流程
+        新增：40秒未检测到状态时执行鼠标右移
         
         Returns:
             bool: 是否成功检测到初始状态
         """
         logger.info("🔍 等待检测到初始状态 (0或1)...")
         timeout = fisher_config.timing.initial_timeout
+        mouse_move_timeout = fisher_config.timing.initial_mouse_move_timeout  # 40秒
         detection_count = 0
+        mouse_moved = False  # 标记是否已执行鼠标右移
         
         while not self.should_stop:
             # 检查超时
@@ -339,9 +348,21 @@ class FishingController:
                 self._update_status(FishingState.ERROR, error_message=error_msg)
                 return False
             
+            # 🆕 检查是否需要执行鼠标右移（40秒时）
+            if not mouse_moved and elapsed > mouse_move_timeout:
+                logger.info(f"⏰ 初始状态检测已达到 {mouse_move_timeout} 秒，执行鼠标右移...")
+                if input_controller.move_mouse_right():
+                    logger.info("✅ 鼠标右移完成，继续检测初始状态")
+                else:
+                    logger.warning("⚠️ 鼠标右移失败，继续检测初始状态")
+                mouse_moved = True  # 标记已执行，避免重复执行
+            
             detection_count += 1
             if detection_count % 50 == 0:  # 每5秒输出一次进度
-                logger.info(f"🔍 初始状态检测中... 已尝试 {detection_count} 次，耗时 {elapsed:.1f}秒")
+                status_msg = f"🔍 初始状态检测中... 已尝试 {detection_count} 次，耗时 {elapsed:.1f}秒"
+                if mouse_moved:
+                    status_msg += f" (已在{mouse_move_timeout}秒时执行鼠标右移)"
+                logger.info(status_msg)
             
             # 检测当前允许的状态
             result = model_detector.detect_multiple_states(self.allowed_states)
@@ -482,7 +503,8 @@ class FishingController:
     def _handle_retry_casting(self) -> bool:
         """
         处理重新抛竿操作（状态1超时时使用）
-        新增流程: 停止连续点击 → 鼠标右移 → 重新抛竿
+        流程: 停止连续点击 → 重新抛竿
+        注意: 鼠标右移已移至初始状态检测阶段，此处不再执行
         
         Returns:
             bool: 是否成功重新抛竿
@@ -491,13 +513,6 @@ class FishingController:
         
         # 等待一下让之前的操作完全停止
         time.sleep(0.5)
-        
-        # 🆕 新增步骤：鼠标向右平移
-        logger.info("🖱️  执行鼠标右移...")
-        if input_controller.move_mouse_right():
-            logger.info("✅ 鼠标右移完成")
-        else:
-            logger.warning("⚠️  鼠标右移失败，继续执行抛竿")
         
         # 执行抛竿
         if input_controller.cast_rod():
@@ -690,40 +705,53 @@ class FishingController:
     def _handle_success(self) -> bool:
         """
         处理钓鱼成功状态
-        增加最大尝试次数限制，防止死循环
+        新流程：停止按键循环和点击 → 等待2.5秒 → 按F键 → 1秒后检查状态消失 → 重复最多3次
         
         Returns:
             bool: 是否成功处理
         """
-        logger.info("处理钓鱼成功状态...")
+        logger.info("🎉 处理钓鱼成功状态...")
         self._update_status(FishingState.SUCCESS, detected_state=4)
         
-        max_attempts = 20  # 最大尝试次数，防止死循环（约30秒）
-        attempt_count = 0
+        # 🆕 立即停止按键循环和连续点击
+        logger.info("🛑 停止按键循环和连续点击...")
+        self._stop_key_cycle()
+        input_controller.stop_clicking()
         
-        while not self.should_stop and attempt_count < max_attempts:
-            attempt_count += 1
-            logger.info(f"🔄 成功状态处理尝试 {attempt_count}/{max_attempts}")
+        # 获取配置参数
+        wait_time = fisher_config.timing.success_wait_time  # 2.5秒
+        check_interval = fisher_config.timing.success_f_key_interval  # 1秒
+        max_attempts = fisher_config.timing.success_f_key_max_attempts  # 3次
+        
+        # 🆕 等待2.5秒后开始按F键流程
+        logger.info(f"⏳ 等待 {wait_time} 秒后开始按F键...")
+        time.sleep(wait_time)
+        
+        # 🆕 按F键重试循环，最多3次
+        for attempt in range(1, max_attempts + 1):
+            logger.info(f"🔄 按F键尝试 {attempt}/{max_attempts}")
             
-            # 等待1.5秒后按f键
-            if input_controller.wait_and_handle_success():
-                # 检查状态4是否消失
-                result = model_detector.detect_specific_state(4)
-                if not result:
-                    logger.info("✅ 成功状态已消失，准备抛竿")
-                    return self._handle_casting()
-                else:
-                    logger.info("⏳ 成功状态仍存在，继续按f键")
+            # 按下F键
+            if input_controller.handle_success_key():
+                logger.info(f"✅ 第{attempt}次按F键成功")
             else:
-                logger.error("❌ 处理成功状态失败")
-                return False
+                logger.warning(f"⚠️ 第{attempt}次按F键失败")
+            
+            # 等待1秒后检查状态是否消失
+            logger.info(f"⏳ 等待 {check_interval} 秒后检查成功状态是否消失...")
+            time.sleep(check_interval)
+            
+            # 检查状态4是否消失
+            result = model_detector.detect_specific_state(4)
+            if not result:
+                logger.info(f"✅ 成功状态已消失（第{attempt}次尝试后），准备抛竿")
+                return True  # 直接返回True，让上级调用者处理抛竿
+            else:
+                logger.info(f"⏳ 成功状态仍存在（第{attempt}次尝试后），继续下一次尝试...")
         
-        # 如果达到最大尝试次数，强制进入抛竿阶段
-        if attempt_count >= max_attempts:
-            logger.warning(f"⚠️ 成功状态处理超时({max_attempts}次尝试)，强制进入抛竿阶段")
-            return self._handle_casting()
-        
-        return False
+        # 🆕 如果3次尝试后状态仍未消失，强制进入抛竿阶段
+        logger.warning(f"⚠️ 成功状态处理完成({max_attempts}次尝试)，强制进入抛竿阶段")
+        return True  # 返回True让流程继续，由上级调用者处理抛竿
     
     def _handle_casting(self) -> bool:
         """

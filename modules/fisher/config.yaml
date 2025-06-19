@@ -51,6 +51,7 @@ model:
 timing:
   # 超时设置
   initial_timeout: 180             # 初始状态检测超时时间 (3分钟)
+  initial_mouse_move_timeout: 40   # 初始状态检测时鼠标右移触发时间 (40秒)
   
   # 鼠标操作时间控制 (新版随机化点击系统，防止被检测为脚本)
   # 这些参数会在指定范围内随机取值，模拟真实人类操作
@@ -68,7 +69,9 @@ timing:
   # 钓鱼操作时间控制
   cast_hold_time: 2.0              # 抛竿长按时间
   state3_pause_time: 1.0           # 状态3暂停时间 - 耐力恢复等待
-  success_wait_time: 2.0           # 钓鱼成功等待时间 - 按f键前等待
+  success_wait_time: 2.5           # 钓鱼成功等待时间 - 按f键前等待 (2.5秒)
+  success_f_key_interval: 1.0      # 按f键后等待时间 - 检查状态消失间隔 (1秒)
+  success_f_key_max_attempts: 3    # 按f键最大尝试次数 - 重复按f键次数 (3次)
 
 # 状态1超时重试配置
 # 当状态1(鱼上钩未提线)持续3秒未改变时的重试机制配置
