@@ -3,11 +3,31 @@ Fisher钓鱼模块核心控制器
 实现钓鱼状态机逻辑和多线程协调，协调模型检测和输入控制
 
 作者: AutoFish Team
-版本: v1.0.14
+版本: v1.0.18
 创建时间: 2024-12-28
 更新时间: 2025-01-17
 
 修复历史:
+v1.0.18: 新功能 - 状态1超时重试机制
+         - 新增：如果状态1持续3秒没有进入提线阶段，自动重新抛竿
+         - 智能检测：检测状态2/3/4的出现来判断是否进入提线阶段
+         - 不计轮数：重试时不计入轮数统计，确保统计准确性
+         - 资源清理：重试前停止所有当前操作，避免冲突
+         - 日志优化：详细记录重试过程，便于问题排查
+v1.0.17: 重大修复 - 轮数计数时机错误修复
+         - 修复轮数计数时机：从抛竿时计数改为一轮钓鱼真正完成后计数
+         - 解决"抛竿时+1，等待上钩阶段又+1"的问题
+         - 确保轮数计数逻辑正确：完成一轮钓鱼才+1
+         - 优化日志显示，轮数统计更准确
+v1.0.16: 功能优化 - 按键循环激活时机修改
+         - 修改按键循环激活时机：从提线阶段开始时立即启动改为第一次检测到状态2时启动
+         - 新增key_cycle_started标志变量追踪按键循环状态
+         - 优化资源利用：避免在不需要时启动按键循环
+         - 提升逻辑合理性：真正由游戏状态驱动按键循环启动
+v1.0.15: 重大修复 - UI显示逻辑和状态流转验证修复
+         - 修复UI中"完成钓鱼"错误显示问题
+         - 增强状态4检测的阶段验证机制
+         - 严格禁止在错误阶段检测到成功状态
 v1.0.14: 重大修复 - 状态流转验证系统
          - 添加状态流转规则验证：0→1→2/3→4的严格顺序
          - 修复等待阶段直接检测到成功状态的问题
@@ -123,6 +143,22 @@ class FishingController:
         Returns:
             bool: 状态流转是否有效
         """
+        # 🔧 修复：状态4可以在提线阶段和钓鱼成功阶段出现
+        # 提线阶段：检测成功状态的出现
+        # 钓鱼成功阶段：检测成功状态的消失（用于判断是否可以抛竿）
+        if new_state == 4:
+            # 状态4可以在提线阶段和钓鱼成功阶段出现
+            if self.current_fishing_phase not in ["提线中", "钓鱼成功"]:
+                logger.warning(f"❌ 状态流转验证失败: 状态4只能在提线阶段或钓鱼成功阶段出现，当前阶段: {self.current_fishing_phase}")
+                logger.warning(f"   📚 状态历史: {self.state_history[-10:]}")
+                return False
+            
+            # 必须已经有提线状态(2或3)的历史记录
+            if not (2 in self.state_history or 3 in self.state_history):
+                logger.warning(f"❌ 状态流转验证失败: 状态4(成功)必须在状态2或3之后出现")
+                logger.warning(f"   📚 状态历史: {self.state_history[-10:]}")
+                return False
+        
         # 检查是否在允许的状态列表中
         if new_state not in self.allowed_states:
             logger.warning(f"⚠️  状态流转验证失败: 状态{new_state}不在当前允许状态{self.allowed_states}中")
@@ -137,11 +173,6 @@ class FishingController:
             # 规则1: 状态1之后不能再出现状态0
             if new_state == 0 and 1 in self.state_history:
                 logger.warning(f"⚠️  状态流转验证失败: 检测到状态1后不应再出现状态0")
-                return False
-            
-            # 规则2: 状态4(成功)必须在状态2或3之后
-            if new_state == 4 and not (2 in self.state_history or 3 in self.state_history):
-                logger.warning(f"⚠️  状态流转验证失败: 状态4(成功)必须在状态2或3之后出现")
                 return False
             
             # 规则3: 状态2、3必须在状态1之后
@@ -201,9 +232,15 @@ class FishingController:
         with self.thread_lock:
             # 状态流转验证
             if detected_state is not None and not force_update:
+                logger.debug(f"🔍 [状态验证] 尝试转换到状态{detected_state}, 当前阶段: {self.current_fishing_phase}")
+                
                 if not self._is_valid_state_transition(detected_state):
-                    logger.warning(f"❌ 拒绝无效状态流转: {detected_state}")
+                    logger.warning(f"❌ [状态验证] 拒绝无效状态流转: {detected_state}")
+                    logger.debug(f"   📋 当前允许状态: {self.allowed_states}")
+                    logger.debug(f"   🏷️ 当前阶段: {self.current_fishing_phase}")
                     return  # 拒绝无效的状态更新
+                else:
+                    logger.debug(f"✅ [状态验证] 状态{detected_state}验证通过")
                 
                 # 记录有效状态到历史
                 self.state_history.append(detected_state)
@@ -384,6 +421,7 @@ class FishingController:
     def _handle_fish_hooked(self) -> bool:
         """
         处理鱼上钩状态
+        新增：状态1超时重试机制 - 如果状态1持续3秒没有进入提线阶段，重新抛竿
         
         Returns:
             bool: 是否成功处理
@@ -399,7 +437,39 @@ class FishingController:
         logger.info("✅ 快速点击已启动")
         logger.info("🎯 进入提线阶段...")
         
-        # 进入提线阶段
+        # 🆕 状态1超时检测：如果3秒内没有进入提线阶段，重新抛竿
+        state1_timeout = 3.0  # 状态1超时时间（秒）
+        state1_start_time = time.time()
+        
+        while not self.should_stop:
+            # 检查是否已进入提线阶段（检测到状态2/3/4）
+            result = model_detector.detect_multiple_states([2, 3, 4])
+            if result:
+                logger.info(f"✅ 检测到提线状态{result['state']}，进入正常提线阶段")
+                break
+            
+            # 检查状态1超时
+            elapsed = time.time() - state1_start_time
+            if elapsed > state1_timeout:
+                logger.warning(f"⚠️ 状态1持续{state1_timeout}秒未进入提线阶段，可能卡住了")
+                logger.warning("🔄 停止当前操作，重新抛竿（此轮不计数）")
+                
+                # 停止当前操作
+                input_controller.stop_clicking()
+                self._stop_key_cycle()
+                
+                # 执行重新抛竿
+                if self._handle_retry_casting():
+                    logger.info("✅ 重新抛竿成功，返回主循环重新开始")
+                    return "retry"  # 返回特殊值表示需要重试
+                else:
+                    logger.error("❌ 重新抛竿失败")
+                    return False
+            
+            # 短暂等待后继续检测
+            time.sleep(0.1)
+        
+        # 进入正常提线阶段
         result = self._handle_pulling_phase()
         
         if result:
@@ -409,25 +479,52 @@ class FishingController:
         
         return result
     
+    def _handle_retry_casting(self) -> bool:
+        """
+        处理重新抛竿操作（状态1超时时使用）
+        新增流程: 停止连续点击 → 鼠标右移 → 重新抛竿
+        
+        Returns:
+            bool: 是否成功重新抛竿
+        """
+        logger.info("🎣 执行重新抛竿操作...")
+        
+        # 等待一下让之前的操作完全停止
+        time.sleep(0.5)
+        
+        # 🆕 新增步骤：鼠标向右平移
+        logger.info("🖱️  执行鼠标右移...")
+        if input_controller.move_mouse_right():
+            logger.info("✅ 鼠标右移完成")
+        else:
+            logger.warning("⚠️  鼠标右移失败，继续执行抛竿")
+        
+        # 执行抛竿
+        if input_controller.cast_rod():
+            logger.info("✅ 重新抛竿完成，准备重新开始钓鱼")
+            # 等待抛竿动画完成
+            time.sleep(1.0)
+            return True
+        else:
+            logger.error("❌ 重新抛竿失败")
+            return False
+    
     def _handle_pulling_phase(self) -> bool:
         """
         处理提线阶段 (状态2和3的切换)
-        使用简单的按键循环替代OCR识别
+        按键循环在第一次检测到状态2时激活
         
         Returns:
             bool: 是否成功完成提线阶段
         """
         logger.info("🎯 进入提线阶段...")
         
-        # 启动简单按键循环（替代OCR）
-        logger.info("⌨️  启动按键循环（a/d键切换）...")
-        self._start_key_cycle()
-        
         # 初始化状态检测
         previous_detected_state = None
         no_detection_count = 0  # 连续无检测次数
         total_detection_count = 0  # 总检测次数
         pulling_start = time.time()  # 用于统计时间，不用于超时
+        key_cycle_started = False  # 按键循环是否已启动标志
         
         logger.info(f"🔍 开始检测提线状态（状态2/3/4/5/6），无超时限制")
         
@@ -550,6 +647,12 @@ class FishingController:
                     self._update_status(FishingState.PULLING_NORMAL)
                     input_controller.resume_clicking()
                     
+                    # 🔧 修改：在第一次检测到状态2时启动按键循环
+                    if not key_cycle_started:
+                        logger.info("⌨️  第一次检测到状态2，启动按键循环（a/d键切换）...")
+                        self._start_key_cycle()
+                        key_cycle_started = True
+                    
                 elif detected_state == 3:  # 提线中_耐力已到二分之一
                     logger.info("🟡 状态3: 暂停点击")
                     self._update_status(FishingState.PULLING_HALFWAY)
@@ -587,6 +690,7 @@ class FishingController:
     def _handle_success(self) -> bool:
         """
         处理钓鱼成功状态
+        增加最大尝试次数限制，防止死循环
         
         Returns:
             bool: 是否成功处理
@@ -594,19 +698,30 @@ class FishingController:
         logger.info("处理钓鱼成功状态...")
         self._update_status(FishingState.SUCCESS, detected_state=4)
         
-        while not self.should_stop:
+        max_attempts = 20  # 最大尝试次数，防止死循环（约30秒）
+        attempt_count = 0
+        
+        while not self.should_stop and attempt_count < max_attempts:
+            attempt_count += 1
+            logger.info(f"🔄 成功状态处理尝试 {attempt_count}/{max_attempts}")
+            
             # 等待1.5秒后按f键
             if input_controller.wait_and_handle_success():
                 # 检查状态4是否消失
                 result = model_detector.detect_specific_state(4)
                 if not result:
-                    logger.info("成功状态已消失，准备抛竿")
+                    logger.info("✅ 成功状态已消失，准备抛竿")
                     return self._handle_casting()
                 else:
-                    logger.info("成功状态仍存在，继续按f键")
+                    logger.info("⏳ 成功状态仍存在，继续按f键")
             else:
-                logger.error("处理成功状态失败")
+                logger.error("❌ 处理成功状态失败")
                 return False
+        
+        # 如果达到最大尝试次数，强制进入抛竿阶段
+        if attempt_count >= max_attempts:
+            logger.warning(f"⚠️ 成功状态处理超时({max_attempts}次尝试)，强制进入抛竿阶段")
+            return self._handle_casting()
         
         return False
     
@@ -622,9 +737,7 @@ class FishingController:
         
         # 执行抛竿
         if input_controller.cast_rod():
-            # 增加轮数计数
-            self.status.round_count += 1
-            logger.info(f"抛竿完成，开始第 {self.status.round_count} 轮钓鱼")
+            logger.info("抛竿完成，准备下一轮钓鱼")
             
             # 等待抛竿动画完成
             time.sleep(1.0)
@@ -667,9 +780,16 @@ class FishingController:
                 # 处理鱼上钩状态
                 if self.status.current_detected_state == 1:
                     logger.info("🐟 开始处理鱼上钩状态...")
-                    if not self._handle_fish_hooked():
+                    fish_hooked_result = self._handle_fish_hooked()
+                    
+                    if fish_hooked_result == "retry":
+                        # 🆕 状态1超时重试：重新开始本轮，不计轮数
+                        logger.info("🔄 状态1超时，重新开始本轮钓鱼（不计轮数）")
+                        continue  # 回到主循环开始，重新开始这一轮
+                    elif not fish_hooked_result:
                         logger.error("❌ 处理鱼上钩状态失败，退出主循环")
                         break
+                    
                     logger.info("✅ 鱼上钩状态处理完成")
                 else:
                     logger.warning(f"⚠️  警告：期望状态1，但当前检测状态为: {self.status.current_detected_state}")
@@ -680,6 +800,8 @@ class FishingController:
                     logger.error("❌ 抛竿操作失败，退出主循环")
                     break
                 
+                # 🔧 修复：在一轮钓鱼真正完成后才增加轮数计数
+                self.status.round_count += 1
                 logger.info(f"🎉 第 {self.status.round_count} 轮钓鱼完成")
         
         except Exception as e:

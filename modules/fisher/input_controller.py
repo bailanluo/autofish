@@ -15,6 +15,7 @@ import threading
 from typing import Optional
 import pyautogui
 import keyboard
+import ctypes
 
 # 导入统一日志系统
 import sys
@@ -50,6 +51,92 @@ class InputController:
         pyautogui.PAUSE = 0.01  # 设置操作间隔
         
         logger.info("输入控制器初始化完成")
+    
+    def _get_system_dpi(self) -> int:
+        """
+        获取系统DPI设置
+        
+        Returns:
+            int: 系统DPI值，默认返回96如果检测失败
+        """
+        try:
+            # Windows API获取DPI
+            dc = ctypes.windll.user32.GetDC(0)
+            dpi = ctypes.windll.gdi32.GetDeviceCaps(dc, 88)  # LOGPIXELSX
+            ctypes.windll.user32.ReleaseDC(0, dc)
+            
+            # 转换为常见的DPI值 (96 DPI = 100%缩放)
+            # 96->100%, 120->125%, 144->150%, 192->200%, 240->250%等
+            actual_dpi = int(dpi * 96 / 96)  # 标准化处理
+            
+            logger.debug(f"检测到系统DPI: {actual_dpi}")
+            return actual_dpi
+            
+        except Exception as e:
+            logger.warning(f"DPI检测失败，使用默认值96: {e}")
+            return 96
+    
+    def _calculate_pixels_from_cm(self, distance_cm: float) -> int:
+        """
+        根据物理距离(厘米)和当前DPI计算像素值
+        
+        Args:
+            distance_cm: 物理距离(厘米)
+            
+        Returns:
+            int: 对应的像素值
+        """
+        try:
+            current_dpi = self._get_system_dpi()
+            
+            # DPI转换公式: 1英寸 = 2.54厘米
+            # 像素 = DPI × 英寸 = DPI × (厘米 ÷ 2.54)
+            pixels = int(current_dpi * distance_cm / 2.54)
+            
+            logger.debug(f"物理距离转像素: {distance_cm}cm × {current_dpi}DPI ÷ 2.54 = {pixels}px")
+            return pixels
+            
+        except Exception as e:
+            # 失败时使用96 DPI作为默认值计算
+            default_pixels = int(96 * distance_cm / 2.54)
+            logger.warning(f"DPI计算失败，使用96DPI默认值: {distance_cm}cm → {default_pixels}px, 错误: {e}")
+            return default_pixels
+    
+    def move_mouse_right(self, distance_cm: Optional[float] = None) -> bool:
+        """
+        向右移动鼠标指定物理距离(自动DPI适配)
+        
+        Args:
+            distance_cm: 移动的物理距离(厘米)，None表示使用配置文件
+            
+        Returns:
+            bool: 是否成功移动
+        """
+        try:
+            # 获取配置的物理距离
+            if distance_cm is None:
+                distance_cm = fisher_config.retry.mouse_move_right_cm
+            
+            # 根据物理距离和当前DPI计算像素值
+            pixels = self._calculate_pixels_from_cm(distance_cm)
+            
+            # 获取当前鼠标位置
+            current_x, current_y = pyautogui.position()
+            
+            # 向右移动
+            new_x = current_x + pixels
+            pyautogui.moveTo(new_x, current_y, duration=0.1)
+            
+            # 等待移动完成
+            move_delay = fisher_config.retry.mouse_move_delay
+            time.sleep(move_delay)
+            
+            logger.info(f"🖱️  鼠标右移: {distance_cm}cm → {pixels}px (从 {current_x},{current_y} 到 {new_x},{current_y})")
+            return True
+            
+        except Exception as e:
+            logger.error(f"鼠标右移失败: {e}")
+            return False
     
     def _click_worker(self) -> None:
         """

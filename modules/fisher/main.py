@@ -54,8 +54,8 @@ def main():
     """主函数"""
     try:
         logger.info("=" * 50)
-        logger.info("Fisher钓鱼模块 v1.0.14")
-        logger.info("智能钓鱼辅助工具 - 状态流转验证版")
+        logger.info("Fisher钓鱼模块 v1.0.20")
+        logger.info("智能钓鱼辅助工具 - 物理距离自动DPI适配版")
         logger.info("=" * 50)
         
         # 检查管理员权限

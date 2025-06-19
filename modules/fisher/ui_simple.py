@@ -753,8 +753,16 @@ class FisherUI:
                 detected_name = state_names.get(status.current_detected_state, f"状态{status.current_detected_state}")
                 self._append_status(f"🎯 {current_state_name} | 检测: {detected_name}")
             
-            if status.round_count > 0:
+            # 🔧 修复：只在抛竿状态且轮数发生变化时显示完成钓鱼
+            # 避免每次状态更新都显示"完成钓鱼"
+            if (status.current_state == FishingState.CASTING and 
+                status.round_count > 0 and 
+                hasattr(self, '_last_round_count') and 
+                status.round_count > self._last_round_count):
                 self._append_status(f"🏆 完成第 {status.round_count} 轮钓鱼")
+                
+            # 记录当前轮数，用于检测轮数变化
+            self._last_round_count = getattr(status, 'round_count', 0)
         
         if self.root:
             self.root.after(0, update_ui)
