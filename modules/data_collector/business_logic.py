@@ -570,22 +570,25 @@ class BusinessLogic:
     def _create_category_item(self, category, count, annotation_info):
         """创建单个类别项"""
         from tkinter import ttk
+        import tkinter as tk
         
         # 创建类别框架（可点击）
         category_frame = ttk.Frame(self.ui_manager.stats_scrollable_frame, relief="ridge", padding="6")
         category_frame.pack(fill="x", pady=2, padx=8)
         category_frame.configure(cursor="hand2")
         
-        # 标注数量标签
-        annotation_count = annotation_info['categories'].get(category, 0)
-        ann_label = ttk.Label(category_frame, 
-                            text=f"标注:{annotation_count}",
-                            font=('Microsoft YaHei', 9),
-                            foreground="#3498db",
-                            width=8,
-                            anchor="center",
-                            cursor="hand2")
-        ann_label.pack(side="right", padx=(5, 2))
+        # 复制按钮（使用标签样式，替换原来的标注数量标签）
+        copy_label = ttk.Label(category_frame, 
+                             text="📋复制",
+                             font=('Microsoft YaHei', 9),
+                             foreground="#3498db",
+                             width=8,
+                             anchor="center",
+                             cursor="hand2")
+        copy_label.pack(side="right", padx=(5, 2))
+        
+        # 绑定复制功能到标签点击事件
+        copy_label.bind("<Button-1>", lambda e, cat=category: self._copy_folder_name(cat))
         
         # 数量标签
         count_label = ttk.Label(category_frame, 
@@ -620,12 +623,38 @@ class BusinessLogic:
             category_frame.configure(style="Highlight.TFrame")
             category_label.configure(foreground="#27ae60", font=('Microsoft YaHei', 10, 'bold'))
             count_label.configure(foreground="#27ae60")
-            ann_label.configure(foreground="#27ae60")
+            copy_label.configure(foreground="#27ae60")
             id_label.configure(foreground="#27ae60")
         
-        # 绑定点击事件
-        for widget in [category_frame, category_label, count_label, ann_label, id_label]:
+        # 绑定点击事件（复制按钮除外）
+        for widget in [category_frame, category_label, count_label, id_label]:
             widget.bind("<Button-1>", lambda e, cat=category: self.open_category_folder(cat))
+    
+    def _copy_folder_name(self, category: str):
+        """复制文件夹名称到剪贴板"""
+        try:
+            import tkinter as tk
+            
+            # 复制到剪贴板
+            self.ui_manager.root.clipboard_clear()
+            self.ui_manager.root.clipboard_append(category)
+            self.ui_manager.root.update()  # 确保剪贴板更新
+            
+            # 显示成功提示
+            if hasattr(self.ui_manager, 'status_label') and self.ui_manager.status_label:
+                original_text = self.ui_manager.status_label.cget("text")
+                self.ui_manager.status_label.config(text=f"✅ 已复制: {category}", foreground="#27ae60")
+                
+                # 2秒后恢复原文本
+                self.ui_manager.root.after(2000, lambda: self.ui_manager.status_label.config(text=original_text, foreground="#7f8c8d"))
+            
+            self.logger.info(f"已复制文件夹名称到剪贴板: {category}")
+            
+        except Exception as e:
+            self.logger.error(f"复制文件夹名称失败: {e}")
+            if hasattr(self.ui_manager, 'status_label') and self.ui_manager.status_label:
+                self.ui_manager.status_label.config(text="❌ 复制失败", foreground="#e74c3c")
+                self.ui_manager.root.after(2000, lambda: self.ui_manager.status_label.config(text="", foreground="#7f8c8d"))
     
     def _create_no_data_display(self):
         """创建无数据显示"""

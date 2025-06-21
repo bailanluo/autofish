@@ -3,11 +3,17 @@ Fisher钓鱼模块核心控制器
 实现钓鱼状态机逻辑和多线程协调，协调模型检测和输入控制
 
 作者: AutoFish Team
-版本: v1.0.21
+版本: v1.0.24
 创建时间: 2024-12-28
 更新时间: 2025-01-17
 
 修复历史:
+v1.0.24: 重大修复 - 状态转换死锁问题修复
+         - 修复_handle_fish_hooked中状态1后无法转换到状态2/3的问题
+         - 确保状态1检测后立即更新allowed_states，避免状态转换死锁
+         - 改用状态流转验证系统检测提线状态，确保状态更新一致性
+         - 添加详细日志记录状态转换过程，便于问题排查
+         - 解决"卡在鱼上钩未提线状态"的问题
 v1.0.21: 重大功能调整 - 鼠标右移时机调整和成功状态处理优化
          - 鼠标右移时机调整：从状态1超时3秒改为初始状态检测40秒时触发
          - 成功状态处理优化：检测到成功后立即停止按键循环和点击，等待2.5秒后按F键
@@ -215,10 +221,18 @@ class FishingController:
     
     def _reset_state_tracking(self) -> None:
         """重置状态追踪，开始新一轮钓鱼"""
+        logger.info(f"🔍 [调试] 状态追踪重置前 - 历史状态: {self.state_history[-10:] if self.state_history else '无'}")
+        logger.info(f"🔍 [调试] 状态追踪重置前 - 当前阶段: {self.current_fishing_phase}")
+        logger.info(f"🔍 [调试] 状态追踪重置前 - 允许状态: {self.allowed_states}")
+        logger.info(f"🔍 [调试] 状态追踪重置前 - 当前检测状态: {self.status.current_detected_state}")
+        
         self.state_history.clear()
         self.current_fishing_phase = "初始化"
         self.allowed_states = [0, 1]
+        
         logger.info(f"🔄 状态追踪已重置，开始新一轮钓鱼")
+        logger.info(f"🔍 [调试] 状态追踪重置后 - 新阶段: {self.current_fishing_phase}")
+        logger.info(f"🔍 [调试] 状态追踪重置后 - 新允许状态: {self.allowed_states}")
     
     def _update_status(self, state: Optional[FishingState] = None, 
                       detected_state: Optional[int] = None,
@@ -334,10 +348,16 @@ class FishingController:
             bool: 是否成功检测到初始状态
         """
         logger.info("🔍 等待检测到初始状态 (0或1)...")
+        logger.info(f"🔍 [调试] 初始状态检测开始 - 当前业务状态: {self.status.current_state}")
+        logger.info(f"🔍 [调试] 初始状态检测开始 - 当前检测状态: {self.status.current_detected_state}")
+        logger.info(f"🔍 [调试] 初始状态检测开始 - 允许状态: {self.allowed_states}")
+        
         timeout = fisher_config.timing.initial_timeout
         mouse_move_timeout = fisher_config.timing.initial_mouse_move_timeout  # 40秒
         detection_count = 0
         mouse_moved = False  # 标记是否已执行鼠标右移
+        
+        logger.info(f"🔍 [调试] 初始状态配置 - 总超时: {timeout}s, 鼠标右移超时: {mouse_move_timeout}s")
         
         while not self.should_stop:
             # 检查超时
@@ -348,13 +368,24 @@ class FishingController:
                 self._update_status(FishingState.ERROR, error_message=error_msg)
                 return False
             
-            # 🆕 检查是否需要执行鼠标右移（40秒时）
+            # 🆕 检查是否需要执行鼠标移动（40秒时）
             if not mouse_moved and elapsed > mouse_move_timeout:
-                logger.info(f"⏰ 初始状态检测已达到 {mouse_move_timeout} 秒，执行鼠标右移...")
-                if input_controller.move_mouse_right():
-                    logger.info("✅ 鼠标右移完成，继续检测初始状态")
+                move_direction = fisher_config.retry.mouse_move_direction
+                logger.info(f"⏰ 初始状态检测已达到 {mouse_move_timeout} 秒，执行鼠标{move_direction}移动...")
+                if input_controller.move_mouse(move_direction):
+                    logger.info(f"✅ 鼠标{move_direction}移动完成，开始抛竿...")
+                    
+                    # 🆕 鼠标移动后抛竿
+                    if input_controller.cast_rod():
+                        logger.info(f"✅ 鼠标{move_direction}移动后抛竿完成，继续等待初始状态检测")
+                        # 注意：保持原有计时器，不重置，避免40秒后再次触发死循环
+                        # 等待抛竿动画完成
+                        time.sleep(1.0)
+                    else:
+                        logger.error(f"❌ 鼠标{move_direction}移动后抛竿失败")
+                        return False
                 else:
-                    logger.warning("⚠️ 鼠标右移失败，继续检测初始状态")
+                    logger.warning(f"⚠️ 鼠标{move_direction}移动失败，继续检测初始状态")
                 mouse_moved = True  # 标记已执行，避免重复执行
             
             detection_count += 1
@@ -371,17 +402,34 @@ class FishingController:
                 confidence = result['confidence']
                 
                 logger.info(f"✅ 检测到有效状态: {detected_state} (置信度: {confidence:.2f})")
+                logger.info(f"🔍 [调试] 初始状态检测成功 - 检测状态: {detected_state}, 允许状态: {self.allowed_states}")
                 self._update_status(detected_state=detected_state, confidence=confidence)
                 
                 if detected_state == 0:
                     logger.info("📌 设置状态为：等待上钩")
+                    logger.info(f"🔍 [调试] 状态0处理 - 即将返回True进入等待上钩流程")
                     self._update_status(FishingState.WAITING_HOOK)
                     return True
                 elif detected_state == 1:
                     logger.info("📌 检测到状态1，需要进行累计确认...")
+                    logger.info(f"🔍 [调试] 状态1处理 - 即将返回True进入累计确认流程")
                     # 不立即确认状态1，让主循环调用_wait_for_hook()进行累计确认
                     self._update_status(FishingState.WAITING_HOOK)  # 先设置为等待状态
                     return True
+            else:
+                # 🔍 额外检测：看看是否检测到不允许的状态
+                all_states_result = model_detector.detect_multiple_states([0, 1, 2, 3, 4])
+                if all_states_result:
+                    detected_states = [state for state, detected in all_states_result.items() if detected]
+                    if detected_states:
+                        logger.warning(f"🔍 [调试] 检测到不允许的状态: {detected_states}, 当前允许: {self.allowed_states}")
+                        # 特别关注状态4的持续检测
+                        if 4 in detected_states:
+                            logger.warning(f"🔍 [调试] ⚠️ 检测到状态4但不在允许状态中！这可能是问题根源")
+                            logger.warning(f"🔍 [调试] 当前业务状态: {self.status.current_state}, 应该允许的状态: {self.allowed_states}")
+                else:
+                    if detection_count % 100 == 0:  # 每10秒输出一次
+                        logger.info(f"🔍 [调试] 当前未检测到任何状态（第{detection_count}次检测）")
             
             time.sleep(fisher_config.model.detection_interval)
         
@@ -448,6 +496,12 @@ class FishingController:
             bool: 是否成功处理
         """
         logger.info("🐟 开始处理鱼上钩状态...")
+        
+        # 🔧 修复：确保状态1已经被正确记录和更新allowed_states
+        logger.info("🔧 [修复] 确保状态1状态转换正确...")
+        self._update_status(FishingState.FISH_HOOKED, detected_state=1, force_update=False)
+        logger.info(f"🔧 [修复] 状态1更新完成，当前允许状态: {self.allowed_states}")
+        
         logger.info("🖱️  启动快速点击...")
         
         # 启动快速点击
@@ -462,12 +516,22 @@ class FishingController:
         state1_timeout = 3.0  # 状态1超时时间（秒）
         state1_start_time = time.time()
         
+        logger.info(f"🔍 开始检测提线状态，当前允许状态: {self.allowed_states}")
+        
         while not self.should_stop:
+            # 🔧 修复：使用状态流转验证系统来检测状态2/3/4
             # 检查是否已进入提线阶段（检测到状态2/3/4）
-            result = model_detector.detect_multiple_states([2, 3, 4])
-            if result:
-                logger.info(f"✅ 检测到提线状态{result['state']}，进入正常提线阶段")
-                break
+            detected_result = model_detector.detect_states()
+            if detected_result and detected_result['state'] in [2, 3, 4]:
+                # 使用状态流转验证系统来验证和更新状态
+                if self._is_valid_state_transition(detected_result['state']):
+                    logger.info(f"✅ 检测到提线状态{detected_result['state']}，状态流转验证通过")
+                    # 更新状态（这会同时更新allowed_states）
+                    self._update_status(detected_state=detected_result['state'], 
+                                      confidence=detected_result['confidence'])
+                    break
+                else:
+                    logger.warning(f"⚠️ 检测到状态{detected_result['state']}但状态流转验证失败")
             
             # 检查状态1超时
             elapsed = time.time() - state1_start_time
@@ -711,6 +775,8 @@ class FishingController:
             bool: 是否成功处理
         """
         logger.info("🎉 处理钓鱼成功状态...")
+        logger.info(f"🔍 [调试] 成功状态处理开始 - 当前业务状态: {self.status.current_state}")
+        logger.info(f"🔍 [调试] 成功状态处理开始 - 当前检测状态: {self.status.current_detected_state}")
         self._update_status(FishingState.SUCCESS, detected_state=4)
         
         # 🆕 立即停止按键循环和连续点击
@@ -723,6 +789,8 @@ class FishingController:
         check_interval = fisher_config.timing.success_f_key_interval  # 1秒
         max_attempts = fisher_config.timing.success_f_key_max_attempts  # 3次
         
+        logger.info(f"🔍 [调试] 成功状态配置 - 等待时间: {wait_time}s, 检查间隔: {check_interval}s, 最大尝试: {max_attempts}次")
+        
         # 🆕 等待2.5秒后开始按F键流程
         logger.info(f"⏳ 等待 {wait_time} 秒后开始按F键...")
         time.sleep(wait_time)
@@ -730,6 +798,10 @@ class FishingController:
         # 🆕 按F键重试循环，最多3次
         for attempt in range(1, max_attempts + 1):
             logger.info(f"🔄 按F键尝试 {attempt}/{max_attempts}")
+            
+            # 🔍 在按F键前检查当前状态
+            pre_f_result = model_detector.detect_specific_state(4)
+            logger.info(f"🔍 [调试] 按F键前检测状态4: {'存在' if pre_f_result else '不存在'}")
             
             # 按下F键
             if input_controller.handle_success_key():
@@ -743,14 +815,26 @@ class FishingController:
             
             # 检查状态4是否消失
             result = model_detector.detect_specific_state(4)
+            logger.info(f"🔍 [调试] 按F键后检测状态4: {'存在' if result else '不存在'}")
+            
             if not result:
                 logger.info(f"✅ 成功状态已消失（第{attempt}次尝试后），准备抛竿")
+                logger.info(f"🔍 [调试] 成功状态处理完成 - 即将返回True进入抛竿阶段")
                 return True  # 直接返回True，让上级调用者处理抛竿
             else:
                 logger.info(f"⏳ 成功状态仍存在（第{attempt}次尝试后），继续下一次尝试...")
+                
+                # 🔍 额外检测：看看是否检测到其他状态
+                all_states_result = model_detector.detect_multiple_states([0, 1, 2, 3, 4])
+                if all_states_result:
+                    detected_states = [state for state, detected in all_states_result.items() if detected]
+                    logger.info(f"🔍 [调试] 当前检测到的所有状态: {detected_states}")
+                else:
+                    logger.info(f"🔍 [调试] 当前未检测到任何状态")
         
         # 🆕 如果3次尝试后状态仍未消失，强制进入抛竿阶段
         logger.warning(f"⚠️ 成功状态处理完成({max_attempts}次尝试)，强制进入抛竿阶段")
+        logger.warning(f"🔍 [调试] 强制完成 - 最终检测状态4: {'存在' if model_detector.detect_specific_state(4) else '不存在'}")
         return True  # 返回True让流程继续，由上级调用者处理抛竿
     
     def _handle_casting(self) -> bool:
@@ -788,6 +872,7 @@ class FishingController:
                 
                 # 等待初始状态（状态0或1）
                 logger.info("🔍 开始等待初始状态...")
+                logger.info(f"🔍 [调试] 主循环 - 即将进入等待初始状态，当前检测状态: {self.status.current_detected_state}")
                 self._update_status(FishingState.WAITING_INITIAL, force_update=True)
                 self.timeout_start = time.time()
                 

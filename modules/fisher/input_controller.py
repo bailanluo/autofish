@@ -17,6 +17,8 @@ import pyautogui
 import keyboard
 import ctypes
 
+# Windows API用于游戏兼容的鼠标移动
+
 # 导入统一日志系统
 import sys
 from pathlib import Path
@@ -50,93 +52,104 @@ class InputController:
         pyautogui.FAILSAFE = True  # 启用失效保护
         pyautogui.PAUSE = 0.01  # 设置操作间隔
         
-        logger.info("输入控制器初始化完成")
+        logger.info("输入控制器初始化完成 - 使用Windows mouse_event API游戏兼容模式")
     
-    def _get_system_dpi(self) -> int:
+    def _move_mouse_windows_api(self, dx: int, dy: int) -> bool:
         """
-        获取系统DPI设置
-        
-        Returns:
-            int: 系统DPI值，默认返回96如果检测失败
-        """
-        try:
-            # Windows API获取DPI
-            dc = ctypes.windll.user32.GetDC(0)
-            dpi = ctypes.windll.gdi32.GetDeviceCaps(dc, 88)  # LOGPIXELSX
-            ctypes.windll.user32.ReleaseDC(0, dc)
-            
-            # 转换为常见的DPI值 (96 DPI = 100%缩放)
-            # 96->100%, 120->125%, 144->150%, 192->200%, 240->250%等
-            actual_dpi = int(dpi * 96 / 96)  # 标准化处理
-            
-            logger.debug(f"检测到系统DPI: {actual_dpi}")
-            return actual_dpi
-            
-        except Exception as e:
-            logger.warning(f"DPI检测失败，使用默认值96: {e}")
-            return 96
-    
-    def _calculate_pixels_from_cm(self, distance_cm: float) -> int:
-        """
-        根据物理距离(厘米)和当前DPI计算像素值
+        使用Windows mouse_event API移动鼠标（游戏兼容，直接像素移动）
         
         Args:
-            distance_cm: 物理距离(厘米)
-            
-        Returns:
-            int: 对应的像素值
-        """
-        try:
-            current_dpi = self._get_system_dpi()
-            
-            # DPI转换公式: 1英寸 = 2.54厘米
-            # 像素 = DPI × 英寸 = DPI × (厘米 ÷ 2.54)
-            pixels = int(current_dpi * distance_cm / 2.54)
-            
-            logger.debug(f"物理距离转像素: {distance_cm}cm × {current_dpi}DPI ÷ 2.54 = {pixels}px")
-            return pixels
-            
-        except Exception as e:
-            # 失败时使用96 DPI作为默认值计算
-            default_pixels = int(96 * distance_cm / 2.54)
-            logger.warning(f"DPI计算失败，使用96DPI默认值: {distance_cm}cm → {default_pixels}px, 错误: {e}")
-            return default_pixels
-    
-    def move_mouse_right(self, distance_cm: Optional[float] = None) -> bool:
-        """
-        向右移动鼠标指定物理距离(自动DPI适配)
-        
-        Args:
-            distance_cm: 移动的物理距离(厘米)，None表示使用配置文件
+            dx: X轴移动距离（像素）
+            dy: Y轴移动距离（像素）
             
         Returns:
             bool: 是否成功移动
         """
         try:
-            # 获取配置的物理距离
-            if distance_cm is None:
-                distance_cm = fisher_config.retry.mouse_move_right_cm
-            
-            # 根据物理距离和当前DPI计算像素值
-            pixels = self._calculate_pixels_from_cm(distance_cm)
-            
-            # 获取当前鼠标位置
-            current_x, current_y = pyautogui.position()
-            
-            # 向右移动
-            new_x = current_x + pixels
-            pyautogui.moveTo(new_x, current_y, duration=0.1)
-            
-            # 等待移动完成
-            move_delay = fisher_config.retry.mouse_move_delay
-            time.sleep(move_delay)
-            
-            logger.info(f"🖱️  鼠标右移: {distance_cm}cm → {pixels}px (从 {current_x},{current_y} 到 {new_x},{current_y})")
+            # 使用mouse_event API（最兼容游戏锁定）
+            MOUSEEVENTF_MOVE = 0x0001
+            result = ctypes.windll.user32.mouse_event(MOUSEEVENTF_MOVE, dx, dy, 0, 0)
+            logger.debug(f"Windows mouse_event API移动: dx={dx}, dy={dy}")
             return True
             
         except Exception as e:
-            logger.error(f"鼠标右移失败: {e}")
+            logger.error(f"Windows API移动失败: {e}")
             return False
+    
+    def move_mouse(self, direction: str = "right", distance_pixels: Optional[int] = None) -> bool:
+        """
+        使用Windows mouse_event API移动鼠标（游戏兼容，直接像素移动）
+        
+        Args:
+            direction: 移动方向，支持8个方向:
+                      - 基本方向: "right", "left", "up", "down"
+                      - 对角线方向: "right-down", "right-up", "left-down", "left-up"
+            distance_pixels: 移动距离（像素），None表示使用配置文件的默认值
+            
+        Returns:
+            bool: 是否成功移动
+        """
+        try:
+            # 获取配置的移动距离（像素）
+            if distance_pixels is None:
+                distance_pixels = fisher_config.retry.mouse_move_pixels
+            
+            logger.info(f"开始鼠标{direction}移动，距离: {distance_pixels}px")
+            
+            # 如果距离为0或负数，跳过移动
+            if distance_pixels <= 0:
+                logger.warning(f"移动距离无效: {distance_pixels}px，跳过移动")
+                return True
+            
+            # 根据方向计算移动向量
+            direction_vectors = {
+                "right": (distance_pixels, 0),      # 向右：X轴正方向
+                "left": (-distance_pixels, 0),      # 向左：X轴负方向
+                "down": (0, distance_pixels),       # 向下：Y轴正方向
+                "up": (0, -distance_pixels),        # 向上：Y轴负方向
+                # 对角线移动（使用勾股定理保持总距离不变）
+                "right-down": (int(distance_pixels * 0.707), int(distance_pixels * 0.707)),    # 向右下：45度角
+                "right-up": (int(distance_pixels * 0.707), int(-distance_pixels * 0.707)),     # 向右上：-45度角
+                "left-down": (int(-distance_pixels * 0.707), int(distance_pixels * 0.707)),    # 向左下：135度角
+                "left-up": (int(-distance_pixels * 0.707), int(-distance_pixels * 0.707))      # 向左上：-135度角
+            }
+            
+            if direction not in direction_vectors:
+                logger.error(f"不支持的移动方向: {direction}，支持的方向: {list(direction_vectors.keys())}")
+                return False
+            
+            dx, dy = direction_vectors[direction]
+            logger.info(f"计算移动向量: {direction} → dx={dx}, dy={dy}")
+            
+            # 使用Windows mouse_event API移动鼠标
+            success = self._move_mouse_windows_api(dx, dy)
+            
+            if success:
+                # 等待移动完成
+                move_delay = fisher_config.retry.mouse_move_delay
+                time.sleep(move_delay)
+                
+                logger.info(f"🖱️  鼠标{direction}移动成功 (Windows API): {distance_pixels}px → dx={dx}, dy={dy}")
+                return True
+            else:
+                logger.error(f"Windows API鼠标移动失败，方向: {direction}, 距离: {distance_pixels}px")
+                return False
+            
+        except Exception as e:
+            logger.error(f"鼠标{direction}移动失败: {e}")
+            return False
+    
+    def move_mouse_right(self, distance_pixels: Optional[int] = None) -> bool:
+        """
+        向右移动鼠标(保持向后兼容性)
+        
+        Args:
+            distance_pixels: 移动距离（像素）
+            
+        Returns:
+            bool: 是否成功移动
+        """
+        return self.move_mouse("right", distance_pixels)
     
     def _click_worker(self) -> None:
         """

@@ -3,8 +3,16 @@ Fisher钓鱼模块UI界面 - 简单美化版本
 在现有功能基础上进行界面美化，不添加新功能
 
 作者: AutoFish Team
-版本: v1.0.14
+版本: v1.0.25
 创建时间: 2025-01-17
+更新时间: 2025-01-17
+
+修复历史:
+v1.0.25: UI显示优化 - 等待初始状态时隐藏成功状态检测结果
+         - 等待初始状态时如果检测到状态4，不显示检测结果
+         - 避免"等待初始状态|检测:钓鱼成功状态"的混淆显示
+         - 这是游戏界面延迟导致的正常现象，不需要显示给用户
+v1.0.24: UI状态显示混淆修复，只在合适状态显示检测结果
 """
 
 import tkinter as tk
@@ -749,9 +757,29 @@ class FisherUI:
             state_names = fisher_config.get_state_names()
             current_state_name = status.current_state.value
             
-            if status.current_detected_state is not None:
+            # 🔧 修复：只在合适的状态下显示检测结果，避免混淆
+            # 只在以下状态显示检测状态：等待状态、鱼上钩状态、提线状态
+            should_show_detection = status.current_state in [
+                FishingState.WAITING_INITIAL,
+                FishingState.WAITING_HOOK, 
+                FishingState.FISH_HOOKED,
+                FishingState.PULLING_NORMAL,
+                FishingState.PULLING_HALFWAY,
+                FishingState.SUCCESS
+            ]
+            
+            # 🔧 新增：等待初始状态时，如果检测到状态4（成功状态），不显示检测结果
+            # 这是游戏界面延迟导致的正常现象，不需要显示给用户造成混淆
+            if (status.current_state == FishingState.WAITING_INITIAL and 
+                status.current_detected_state == 4):
+                should_show_detection = False
+            
+            if status.current_detected_state is not None and should_show_detection:
                 detected_name = state_names.get(status.current_detected_state, f"状态{status.current_detected_state}")
                 self._append_status(f"🎯 {current_state_name} | 检测: {detected_name}")
+            else:
+                # 其他状态（如抛竿、停止等）只显示业务状态，不显示检测结果
+                self._append_status(f"🎯 {current_state_name}")
             
             # 🔧 修复：只在抛竿状态且轮数发生变化时显示完成钓鱼
             # 避免每次状态更新都显示"完成钓鱼"

@@ -27,6 +27,10 @@ from modules.fisher.admin_utils import is_admin, check_and_elevate_privileges
 # 设置日志记录器
 logger = setup_logger('fisher_main')
 
+# 版本信息
+APP_VERSION = "v1.0.30"
+APP_NAME = "Fisher钓鱼模块"
+
 def check_dependencies() -> bool:
     """
     检查系统依赖项
@@ -54,8 +58,8 @@ def main():
     """主函数"""
     try:
         logger.info("=" * 50)
-        logger.info("Fisher钓鱼模块 v1.0.21")
-        logger.info("智能钓鱼辅助工具 - 鼠标右移时机调整和成功状态处理优化版")
+        logger.info("Fisher钓鱼模块 v1.0.30")
+        logger.info("智能钓鱼辅助工具 - 调试日志增强版")
         logger.info("=" * 50)
         
         # 检查管理员权限

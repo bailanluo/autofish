@@ -46,28 +46,80 @@ class DataManager:
     
     def _load_class_mapping(self):
         """加载或创建类别映射文件"""
-        mapping_file = self.base_dir / 'class_mapping.txt'
+        # 使用数据采集工具专用的映射文件，避免与模型训练冲突
+        mapping_file = self.raw_dir / 'data_collector_mapping.txt'
         
         if mapping_file.exists():
             try:
                 with open(mapping_file, 'r', encoding='utf-8') as f:
                     for line in f:
                         line = line.strip()
-                        if line and ':' in line:
+                        # 跳过注释行和空行
+                        if line and not line.startswith('#') and ':' in line:
                             class_id_str, class_name = line.split(':', 1)
                             self.class_mapping[class_name.strip()] = int(class_id_str.strip())
                 self.logger.info(f"已加载类别映射: {self.class_mapping}")
             except Exception as e:
                 self.logger.error(f"加载类别映射失败: {e}")
+                # 如果映射文件损坏，尝试重新扫描
+                self._rebuild_mapping_from_labels()
+        else:
+            # 映射文件不存在，扫描已有的标注文件来重建映射
+            self.logger.info("映射文件不存在，正在扫描标注文件重建映射...")
+            self._rebuild_mapping_from_labels()
+    
+    def _rebuild_mapping_from_labels(self):
+        """通过扫描data/raw/labels目录重建类别映射"""
+        try:
+            self.class_mapping = {}
+            
+            # 扫描每个类别目录
+            for category_dir in self.labels_dir.iterdir():
+                if category_dir.is_dir():
+                    category_name = category_dir.name
+                    
+                    # 寻找该类别下的第一个标注文件
+                    label_files = list(category_dir.glob('*.txt'))
+                    if label_files:
+                        # 读取第一个标注文件获取类别ID
+                        first_label_file = label_files[0]
+                        try:
+                            with open(first_label_file, 'r', encoding='utf-8') as f:
+                                first_line = f.readline().strip()
+                                if first_line:
+                                    # YOLO格式第一个数字是类别ID
+                                    class_id = int(first_line.split()[0])
+                                    self.class_mapping[category_name] = class_id
+                                    self.logger.info(f"从标注文件发现类别: {category_name} -> ID {class_id}")
+                        except Exception as e:
+                            self.logger.warning(f"读取标注文件 {first_label_file} 失败: {e}")
+            
+            # 保存重建的映射
+            if self.class_mapping:
+                self._save_class_mapping()
+                self.logger.info(f"成功重建类别映射，共{len(self.class_mapping)}个类别")
+            else:
+                self.logger.warning("未找到任何有效的标注文件，映射为空")
+                
+        except Exception as e:
+            self.logger.error(f"重建类别映射失败: {e}")
     
     def _save_class_mapping(self):
         """保存类别映射文件"""
-        mapping_file = self.base_dir / 'class_mapping.txt'
+        # 使用数据采集工具专用的映射文件
+        mapping_file = self.raw_dir / 'data_collector_mapping.txt'
         try:
             with open(mapping_file, 'w', encoding='utf-8') as f:
+                # 添加文件头注释说明
+                f.write("# 数据采集工具类别映射文件\n")
+                f.write("# 格式: 类别ID: 类别名称\n")
+                f.write("# 此文件由数据采集工具自动维护，请勿手动编辑\n")
+                f.write("#\n")
+                
+                # 按类别ID排序保存
                 for class_name, class_id in sorted(self.class_mapping.items(), key=lambda x: x[1]):
                     f.write(f"{class_id}: {class_name}\n")
-            self.logger.info("类别映射已保存")
+            self.logger.info(f"类别映射已保存到: {mapping_file}")
         except Exception as e:
             self.logger.error(f"保存类别映射失败: {e}")
     

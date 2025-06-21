@@ -67,29 +67,35 @@ timing:
   key_pause_time: 0.5              # 按键暂停时间 - a/d键切换间隔
   
   # 钓鱼操作时间控制
-  cast_hold_time: 2.0              # 抛竿长按时间
+  cast_hold_time: 2.5              # 抛竿长按时间
   state3_pause_time: 1.0           # 状态3暂停时间 - 耐力恢复等待
-  success_wait_time: 2.5           # 钓鱼成功等待时间 - 按f键前等待 (2.5秒)
+  success_wait_time: 3.0           # 钓鱼成功等待时间 - 按f键前等待 (2.5秒)
   success_f_key_interval: 1.0      # 按f键后等待时间 - 检查状态消失间隔 (1秒)
   success_f_key_max_attempts: 3    # 按f键最大尝试次数 - 重复按f键次数 (3次)
 
 # 状态1超时重试配置
 # 当状态1(鱼上钩未提线)持续3秒未改变时的重试机制配置
 retry:
-  # 鼠标右移距离配置 (DPI自动适配)
+  # 鼠标移动配置 (DPI自动适配)
   # 
   # 自动DPI适配说明:
   # - 系统会自动检测当前DPI设置
   # - 根据物理移动距离自动计算适配像素
   # - 确保在不同DPI/缩放下移动距离一致
   # 
-  # 物理移动距离: 3.0厘米 (约120个标准像素在96 DPI下)
+  # 物理移动距离: 3.0厘米 (约118个标准像素在96 DPI下)
   # 在不同DPI下的自动计算示例:
-  #   * 96 DPI (100%): 120px ≈ 3.2cm
-  #   * 120 DPI (125%): 150px ≈ 3.2cm  
-  #   * 144 DPI (150%): 180px ≈ 3.2cm
-  #   * 192 DPI (200%): 240px ≈ 3.2cm
-  mouse_move_right_cm: 3.0             # 鼠标右移物理距离(厘米)
+  #   * 96 DPI (100%): 118px ≈ 3.0cm
+  #   * 120 DPI (125%): 142px ≈ 3.0cm  
+  #   * 144 DPI (150%): 170px ≈ 3.0cm
+  #   * 192 DPI (200%): 227px ≈ 3.0cm
+  # 
+  # 移动方向说明:
+  #   基本方向: right(右), left(左), up(上), down(下)
+  #   对角线方向: right-down(右下), right-up(右上), left-down(左下), left-up(左上)
+  #   对角线移动使用45度角，总移动距离保持配置像素不变
+  mouse_move_direction: right   # 鼠标移动方向 (right/left/up/down/right-down/right-up/left-down/left-up)
+  mouse_move_pixels: 600        # 鼠标移动距离(像素) - 使用Windows API直接移动，测试确定600px为理想距离
   
   # 重试流程时间控制
   mouse_move_delay: 0.2                # 鼠标移动后等待时间(秒)

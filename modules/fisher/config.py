@@ -56,8 +56,9 @@ class TimingConfig:
 
 @dataclass
 class RetryConfig:
-    """重试配置类 - v1.0.21新增"""
-    mouse_move_right_cm: float = 3.0  # 鼠标右移物理距离(厘米)
+    """重试配置类 - v1.0.30更新为像素配置"""
+    mouse_move_direction: str = "right"  # 鼠标移动方向 (right/left/up/down/right-down/right-up/left-down/left-up)
+    mouse_move_pixels: int = 600  # 鼠标移动距离(像素) - Windows API直接移动
     mouse_move_delay: float = 0.2  # 鼠标移动后等待时间(秒)
 
 @dataclass
