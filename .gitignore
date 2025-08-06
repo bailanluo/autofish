@@ -112,3 +112,5 @@ Thumbs.db
 data/
 
 runs/
+docs/
+logs/
